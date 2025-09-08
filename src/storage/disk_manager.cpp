@@ -1,0 +1,67 @@
+//
+// Created by Huang_cj on 2025/9/8.
+//
+
+#include "../../include/storage/disk_manager.h"
+#include "../../include/storage/page.h"
+#include <iostream>
+
+DiskManager::DiskManager(const std::string &db_file) : db_file_(db_file), num_pages_(0) {
+    db_io_.open(db_file_, std::ios::in | std::ios::out | std::ios::binary);
+    if (!db_io_.is_open()) {
+        // 如果文件不存在，就创建新文件
+        db_io_.open(db_file_, std::ios::out | std::ios::binary);
+        db_io_.close();
+        db_io_.open(db_file_, std::ios::in | std::ios::out | std::ios::binary);
+    }
+    db_io_.seekg(0, std::ios::end); // 将读指针移动至文件末尾(参考点文件末尾，偏移量为0)
+    num_pages_ = db_io_.tellg() / PAGE_SIZE;
+}
+
+DiskManager::~DiskManager() {
+    db_io_.close();
+}
+
+// TODO: 这里可能需要加入异步IO
+void DiskManager::ReadPage(int page_id, char *page_data) {
+    if (page_id >= num_pages_) {
+        std::cout << "Invalid page read: " << page_id << std::endl;
+        memset(page_data, 0, PAGE_SIZE);    // 初始化空页
+        return;
+    }
+    // 读取 page_id 页的内容至 page_data 指向的内存
+    db_io_.seekg(page_id * PAGE_SIZE, std::ios::beg);
+    db_io_.read(page_data, PAGE_SIZE);  // 从起始位置开始，往后读 PAGE_SIZE 个字节的内容，放到 page_data 指向的内存中
+}
+
+// TODO: 这里可能需要加入异步IO
+void DiskManager::WritePage(int page_id, const char *page_data) {
+    if (page_id >= num_pages_) {
+        num_pages_ = page_id + 1;
+    }
+    db_io_.seekp(page_id * PAGE_SIZE, std::ios::beg);   // 移动写指针
+    db_io_.write(page_data, PAGE_SIZE);
+    db_io_.flush();     // 将缓冲区的数据强制写入磁盘
+}
+
+int DiskManager::AllocatePage() {
+    if (!free_list_.empty()) {
+        int page_id = free_list_.back();
+        free_list_.pop_back();
+        return page_id;
+    }
+    return num_pages_++; // 没有空闲页就追加
+}
+
+// 将 page_id 对应的页放回到空闲列表
+void DiskManager::DeallocatePage(int page_id) {
+    if (page_id < num_pages_) {
+        free_list_.push_back(page_id);
+    } else {
+        std::cerr << "Warning: trying to deallocate invalid page_id " << page_id << std:: endl;
+    }
+}
+
+
+
+
