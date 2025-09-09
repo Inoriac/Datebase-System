@@ -11,10 +11,11 @@ include_directories(include)
 # storage 模块库
 # ====================
 add_library(storage
-        src/storage/page.cpp
         src/storage/disk_manager.cpp
         src/storage/buffer_pool_manager.cpp
         src/storage/storage_engine.cpp
+        src/storage/record_serializer.cpp
+        src/storage/table_manager.cpp
 )
 
 target_include_directories(storage PUBLIC include)

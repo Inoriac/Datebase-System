@@ -2,7 +2,7 @@
 // Created by Huang_cj on 2025/9/8.
 //
 
-#include "../../include/storage/buffer_pool_manager.h"
+#include "storage/buffer_pool_manager.h"
 #include <iostream>
 #include <cstring>
 
@@ -66,7 +66,7 @@ Page *BufferPoolManager::FetchPage(int page_id) {
     return new_page;
 }
 
-// 释放一个页，如果脏了就写回磁盘
+// 释放一个页的缓冲占用，如果脏了就写回磁盘
 bool BufferPoolManager::UnpinPage(int page_id) {
     // 找不到该页，page_id 有误
     if (!page_table_.count(page_id)) return false;

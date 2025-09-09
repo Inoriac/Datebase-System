@@ -2,8 +2,8 @@
 // Created by Huang_cj on 2025/9/8.
 //
 
-#include "../../include/storage/disk_manager.h"
-#include "../../include/storage/page.h"
+#include "storage/disk_manager.h"
+#include "storage/page.h"
 #include <iostream>
 
 DiskManager::DiskManager(const std::string &db_file) : db_file_(db_file), num_pages_(0) {

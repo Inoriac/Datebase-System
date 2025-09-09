@@ -2,9 +2,9 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
-#include "../include/storage/page.h"
-#include "../include/storage/disk_manager.h"
-#include "../include/storage/buffer_pool_manager.h"
+#include "storage/page.h"
+#include "storage/disk_manager.h"
+#include "storage/buffer_pool_manager.h"
 
 // 为每次测试创建独立的临时文件，避免相互干扰
 static std::string MakeTempDbFile(const std::string &name_hint) {
