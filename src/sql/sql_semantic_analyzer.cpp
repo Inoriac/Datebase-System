@@ -1,4 +1,4 @@
-#include "ast_nodes.h"
+#include "ast.h"
 #include "symbol_table.h"
 
 void semantic_analysis(ASTNode* root_node) {
