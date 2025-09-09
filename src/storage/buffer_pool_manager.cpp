@@ -29,10 +29,17 @@ Page *BufferPoolManager::FetchPage(int page_id) {
         return page;
     }
 
-    // 不在缓存中，淘汰一个页
-    int victim_page_id = -1;
-    if (page_table_.size() >= pool_size_) {
-        victim_page_id = EvictPage();
+    // 不在缓存中，尝试找到空闲帧；若无则淘汰一页并复用其帧
+    Page *new_page = nullptr;
+    for (size_t i = 0; i < pool_size_; i++) {
+        if (pages_[i].GetPageId() == -1) {
+            new_page = &pages_[i];
+            break;
+        }
+    }
+    if (new_page == nullptr) {
+        // 没有空闲帧，需要淘汰
+        int victim_page_id = EvictPage();
         if (victim_page_id == -1) {
             std::cerr << "BufferPoolManager: no victim page to evict!" << std::endl;
             return nullptr;
@@ -42,20 +49,10 @@ Page *BufferPoolManager::FetchPage(int page_id) {
         if (victim_page->IsDirty()) {
             disk_manager_->WritePage(victim_page_id, victim_page->GetData());
         }
-    page_table_.erase(victim_page_id);
-    }
-
-    // 找一个空闲的 page slot
-    Page *new_page = nullptr;
-    for (size_t i = 0;i < pool_size_; i++) {
-        if (pages_[i].GetPageId() == -1) {
-            new_page = &pages_[i];
-            break;
-        }
-    }
-    if (new_page == nullptr) {
-        // 未找到，说明被淘汰页腾出的 slot 可用
-        new_page = &pages_[victim_page_id % pool_size_];
+        // 从页表移除并复用该帧
+        page_table_.erase(victim_page_id);
+        victim_page->SetPageId(-1);
+        new_page = victim_page;
     }
 
     // 从磁盘中加载
@@ -113,6 +110,16 @@ int BufferPoolManager::EvictPage() {
     int victim = lru_list_.back();
     lru_list_.pop_back();
     return victim;
+}
+
+bool BufferPoolManager::FlushPage(int page_id) {
+    if (!page_table_.count(page_id)) {
+        return false;
+    }
+    Page *page = page_table_[page_id];
+    disk_manager_->WritePage(page_id, page->GetData());
+    page->SetDirty(false);
+    return true;
 }
 
 

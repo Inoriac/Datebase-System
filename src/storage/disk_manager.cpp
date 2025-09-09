@@ -30,6 +30,7 @@ void DiskManager::ReadPage(int page_id, char *page_data) {
         return;
     }
     // 读取 page_id 页的内容至 page_data 指向的内存
+    db_io_.clear();
     db_io_.seekg(page_id * PAGE_SIZE, std::ios::beg);
     db_io_.read(page_data, PAGE_SIZE);  // 从起始位置开始，往后读 PAGE_SIZE 个字节的内容，放到 page_data 指向的内存中
 }
@@ -39,6 +40,7 @@ void DiskManager::WritePage(int page_id, const char *page_data) {
     if (page_id >= num_pages_) {
         num_pages_ = page_id + 1;
     }
+    db_io_.clear();
     db_io_.seekp(page_id * PAGE_SIZE, std::ios::beg);   // 移动写指针
     db_io_.write(page_data, PAGE_SIZE);
     db_io_.flush();     // 将缓冲区的数据强制写入磁盘

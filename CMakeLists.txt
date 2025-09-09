@@ -43,14 +43,14 @@ enable_testing()
 # ====================
 # 测试程序
 # ====================
+# 1. 定义测试程序
 add_executable(test_storage
         tests/test_storage.cpp
 )
-target_link_libraries(test_storage PRIVATE
-        storage
-        gtest
-        gtest_main
-)
 
+# 2. 链接库
+target_link_libraries(test_storage PRIVATE storage gtest gtest_main)
+
+# 3. 启用 gtest 自动发现测试
 include(GoogleTest)
 gtest_discover_tests(test_storage)
