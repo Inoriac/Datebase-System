@@ -1,4 +1,4 @@
-/* 1. Bison 定义部分 */
+/* Bison 定义部分 */
 %{
 #include <iostream>
 #include <string>
@@ -19,85 +19,172 @@ void yyerror(const char *s);
     char* str_val; 
 }
 
-/* * 定义 Token。Bison 会为它们分配整数值。
+/* * 定义 Token。
  * <str_val> 表示这个Token关联的值是联合体中的 str_val 成员 (char*)。
  * <int_val> 表示关联的值是 int_val 成员 (int)。
  */
-%token <str_val> IDENTIFIER STRING_CONST
+%token <str_val> IDENTIFIER 
+%token <str_val> STRING_CONST
 %token <int_val> INTEGER_CONST
 
 // 定义没有关联值的关键字Token
-%token K_CREATE K_TABLE K_INSERT K_INTO K_VALUES K_SELECT K_FROM K_WHERE
+%token K_CREATE K_TABLE 
+%token K_INSERT K_INTO K_VALUES 
+%token K_SELECT K_FROM K_WHERE
+%token K_DELETE
+%token K_INT K_VARCHAR
+
+// 定义操作符 Token
+%token OP_EQ OP_LT OP_GT OP_LTE OP_GTE OP_NEQ
+//     =     <     >     <=     >=     !=
 
 /* 定义语法规则的起始点 */
-%start sql_statements
+%start program
 
 %%
-/* 2. Bison 语法规则部分 */
+/* Bison 语法规则部分 */
 
-sql_statements:
-    sql_statement
-    | sql_statements sql_statement
+// 程序的顶层结构：一个或多个 SQL 语句
+program:
+    statements
     ;
 
-sql_statement:
+statements:
+    statement
+    | statements statement
+    ;
+
+// 单条 SQL 语句，必须以分号结尾
+statement:
     create_statement ';'
     | insert_statement ';'
     | select_statement ';'
+    | delete_statement ';'
+    | error ';' { yyerrok; } // 错误恢复：如果一条语句语法错误，跳过它直到分号
     ;
 
+/* --- CREATE TABLE 语句的文法 ---
+ * 示例: CREATE TABLE users (id INT, name VARCHAR);
+ */
 create_statement:
     K_CREATE K_TABLE IDENTIFIER '(' column_definitions ')' {
-        std::cout << "[Parser] Successfully parsed a CREATE TABLE statement." << std::endl;
-        std::cout << "         Table Name: '" << $3 << "'" << std::endl;
-        free($3); // 释放由 strdup 分配的内存
+        std::cout << "[Parser] Parsed a CREATE TABLE statement for table '" << $3 << "'." << std::endl;
+        free($3); // 释放由词法分析器中 strdup 分配的内存
     }
     ;
 
 column_definitions:
-    /* 简单起见，这里我们不进一步解析列的定义，只匹配标识符 */
-    IDENTIFIER 
-    | column_definitions ',' IDENTIFIER
+    column_definition
+    | column_definitions ',' column_definition
     ;
 
+column_definition:
+    IDENTIFIER data_type {
+        // 在这里可以构建列定义的AST节点
+        free($1);
+    }
+    ;
+
+data_type:
+    K_INT
+    | K_VARCHAR 
+    ;
+
+/* --- SELECT 语句的文法 ---
+ * 示例: SELECT id, name FROM users WHERE id > 10;
+ * SELECT * FROM users;
+ */
+select_statement:
+    K_SELECT select_list K_FROM IDENTIFIER optional_where_clause {
+        std::cout << "[Parser] Parsed a SELECT statement on table '" << $4 << "'." << std::endl;
+        free($4);
+    }
+    ;
+
+select_list:
+    '*'
+    | id_list 
+    ;
+
+id_list:
+    IDENTIFIER { free($1); }
+    | id_list ',' IDENTIFIER { free($3); }
+    ;
+
+optional_where_clause:
+    /* 空规则，表示 WHERE 子句是可选的 */
+    | K_WHERE condition
+    ;
+
+/* --- INSERT 语句的文法 ---
+ * 示例: INSERT INTO users VALUES (1, 'Alice');
+ */
 insert_statement:
-    K_INSERT K_INTO IDENTIFIER K_VALUES '(' value_list ')' {
-        std::cout << "[Parser] Successfully parsed an INSERT statement." << std::endl;
-        std::cout << "         Table Name: '" << $3 << "'" << std::endl;
+    K_INSERT K_INTO IDENTIFIER optional_column_list K_VALUES '(' value_list ')' {
+        std::cout << "[Parser] Parsed an INSERT statement for table '" << $3 << "'." << std::endl;
         free($3);
     }
     ;
-    
+
+/*
+ * 新增规则：可选的列列表。
+ * 1. 它可以是空的 (对应 INSERT INTO table VALUES ...)。
+ * 2. 或者它可以在括号中包含一个 `column_list` (我们重用了 SELECT 的规则！)。
+ */
+optional_column_list:
+    /* empty */
+    | '(' id_list ')'
+    ;
+
 value_list:
     literal
     | value_list ',' literal
     ;
 
 literal:
-    STRING_CONST { free($1); }
-    | INTEGER_CONST
+    INTEGER_CONST
+    | STRING_CONST { free($1); }
     ;
 
-select_statement:
-    K_SELECT IDENTIFIER K_FROM IDENTIFIER {
-         std::cout << "[Parser] Successfully parsed a SELECT statement." << std::endl;
-         std::cout << "         Column: '" << $2 << "', Table: '" << $4 << "'" << std::endl;
-         free($2);
-         free($4);
+
+/* --- DELETE 语句的文法 ---
+ * 示例: DELETE FROM users WHERE id = 5;
+ */
+delete_statement:
+    K_DELETE K_FROM IDENTIFIER optional_where_clause {
+        std::cout << "[Parser] Parsed a DELETE statement on table '" << $3 << "'." << std::endl;
+        free($3);
     }
     ;
 
 
-%%
-/* 3. C++ 用户代码部分 */
+/* --- WHERE 条件子句的简单文法 ---
+ * 注意: 为保持简单，这里只支持 "标识符 操作符 字面量" 形式
+ */
+condition:
+    IDENTIFIER comparison_operator literal {
+        free($1);
+    }
+    ;
 
-// 当语法分析器遇到语法错误时，会调用此函数
+comparison_operator:
+    OP_EQ | OP_NEQ | OP_GT | OP_LT | OP_GTE | OP_LTE
+    ;
+
+%%
+/* C++ 代码部分 */
+// 当语法分析器遇到无法匹配的语法时，会调用此函数
 void yyerror(const char *s) {
-    std::cerr << "[Parser] Syntax Error: " << s << std::endl;
+    // yylineno 是 Flex 提供的全局变量，用于追踪当前行号
+    extern int yylineno;
+    std::cerr << "[Parser] Syntax Error at line " << yylineno << ": " << s << std::endl;
 }
 
-// 主函数
+// 主函数 (用于独立测试)
+// 在实际集成中，yyparse() 可能会被其他模块调用
 int main(int argc, char **argv) {
+    // 设置 Flex 从文件读取输入
+    extern FILE *yyin;
     if (argc > 1) {
         yyin = fopen(argv[1], "r");
         if (!yyin) {
@@ -107,8 +194,13 @@ int main(int argc, char **argv) {
     }
     
     // 调用 Bison 生成的解析函数
-    // yyparse() 会在内部循环调用 yylex()
-    yyparse();
+    // yyparse() 会在内部循环调用 yylex() 直到文件末尾
+    // 返回 0 表示成功，非 0 表示有语法错误
+    if (yyparse() == 0) {
+        std::cout << "Parsing completed successfully." << std::endl;
+    } else {
+        std::cout << "Parsing failed due to syntax errors." << std::endl;
+    }
 
     return 0;
 }
