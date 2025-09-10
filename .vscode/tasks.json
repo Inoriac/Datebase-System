@@ -1,0 +1,27 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build C++ Project",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-g",
+                "${workspaceFolder}/src/main.cpp",
+                "${workspaceFolder}/src/sql/sql_semantic_analyzer.cpp",
+                "${workspaceFolder}/src/sql/symbol_table.cpp",
+                "-o",
+                "${workspaceFolder}/build/my_program",
+                "-I${workspaceFolder}/include"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always"
+            },
+            "problemMatcher": "$gcc"
+        }
+    ]
+}
