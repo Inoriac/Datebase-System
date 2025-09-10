@@ -3,6 +3,11 @@
 #include "sql_semantic_analyzer.h" // 假设这是你的语义分析函数声明文件
 #include <iostream>
 
+// Bison/Flex 生成的函数和全局变量的外部声明
+extern int yyparse();
+extern FILE* yyin;
+extern ASTNode* ast_root; // 在.y文件中定义的全局AST根节点
+
 // 声明 mock 数据生成函数
 ASTNode* createMockCreateTableAst();
 ASTNode* createMockInsertAst();

@@ -10,10 +10,13 @@ enum ASTNodeType {
     CREATE_TABLE_STMT,
     INSERT_STMT,
     SELECT_STMT,
+    DELETE_STMT,              // 新增: DELETE语句节点
+    EXPRESSION_NODE,            // 新增: 通用表达式节点 (用于WHERE)
     IDENTIFIER_NODE,
     INTEGER_LITERAL_NODE,
     STRING_LITERAL_NODE,
     COLUMN_DEFINITIONS_LIST,
+    COLUMN_LIST,                // 新增: 独立的列名列表节点
     VALUES_LIST
 };
 
