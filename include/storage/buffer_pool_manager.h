@@ -28,4 +28,6 @@ private:
     std::unordered_map<int, Page*> page_table_; // 缓冲池的逻辑映射
 
     std::list<int> lru_list_;   // LRU 队列，存放page_id;
+
+    std::unordered_map<int, int> page_ref_count_;   // 页引用计数
 };

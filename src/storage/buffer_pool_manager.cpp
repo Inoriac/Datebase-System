@@ -26,6 +26,9 @@ Page *BufferPoolManager::FetchPage(int page_id) {
         Page *page = page_table_[page_id];
         lru_list_.remove(page_id);
         lru_list_.push_front(page_id);
+
+        page_ref_count_[page_id]++; // 引用计数
+
         return page;
     }
 
@@ -75,10 +78,17 @@ bool BufferPoolManager::UnpinPage(int page_id) {
         disk_manager_->WritePage(page_id, page->GetData());
         page->SetDirty(false);
     }
+
+    // 减少引用计数
+    page_ref_count_[page_id]--;
+    if (page_ref_count_[page_id] <= 0) {
+        page_table_.erase(page_id);
+    }
+
     return true;
 }
 
-// 新建页
+// 新建页(同时给到page_id)
 Page *BufferPoolManager::NewPage(int *page_id) {
     *page_id = disk_manager_->AllocatePage();
     Page *page = FetchPage(*page_id);
@@ -89,8 +99,14 @@ Page *BufferPoolManager::NewPage(int *page_id) {
     return page;
 }
 
-// 删除页
+// 删除页(逻辑与内存上的释放)
 bool BufferPoolManager::DeletePage(int page_id) {
+    // 检查引用数
+    if (page_ref_count_.count(page_id) && page_ref_count_[page_id] > 0) {
+        std::cerr << "Warning: trying to delete page with active references" << std::endl;
+        return false;
+    }
+
     if (page_table_.count(page_id)) {
         Page *page = page_table_[page_id];
         if (page->IsDirty()) {
