@@ -82,7 +82,8 @@ bool BufferPoolManager::UnpinPage(int page_id) {
     // 减少引用计数
     page_ref_count_[page_id]--;
     if (page_ref_count_[page_id] <= 0) {
-        page_table_.erase(page_id);
+        // 页继续留在缓冲池，在LRU算法中会对其进行淘汰
+        page_ref_count_.erase(page_id);
     }
 
     return true;
@@ -123,9 +124,19 @@ bool BufferPoolManager::DeletePage(int page_id) {
 // 简单 LRU：淘汰链表尾的页
 int BufferPoolManager::EvictPage() {
     if (lru_list_.empty()) return -1;
-    int victim = lru_list_.back();
-    lru_list_.pop_back();
-    return victim;
+
+    for (auto it = lru_list_.rbegin(); it != lru_list_.rend(); it++) {
+        int page_id = *it;
+
+        // 检查引用数
+        if (!page_ref_count_.count(page_id) || page_ref_count_[page_id] <= 0) {
+            // 找到可以淘汰的页
+            lru_list_.remove(page_id);
+            return page_id;
+        }
+    }
+    // 所有页活跃
+    return -1;
 }
 
 bool BufferPoolManager::FlushPage(int page_id) {

@@ -85,12 +85,13 @@ bool DiskManager::CompactDatabase() {
     // 找到最大的有效页ID
     int max_valid_page = -1;
     for (int i = 0; i < num_pages_; i++) {
-        if (std::find(free_list_.begin(), free_list_.end(), i) == free_list_.end()) {
+        bool is_free = std::find(free_list_.begin(), free_list_.end(), i) != free_list_.end();
+        if (!is_free) {
             max_valid_page = i;
         }
     }
 
-    if (max_valid_page >= 0 && max_valid_page < num_pages_ - 1) {
+    if (max_valid_page >= 0 && max_valid_page < num_pages_) {
         // 截断文件
         TruncateFile(max_valid_page + 1);
         num_pages_ = max_valid_page + 1;
@@ -109,12 +110,29 @@ bool DiskManager::CompactDatabase() {
 }
 
 void DiskManager::TruncateFile(int new_size) {
+    // 关闭当前文件流
     db_io_.close();
-    // 创建新文件，只包含前 new_size 页
-    std::ofstream file(db_file_, std::ios::binary | std::ios::trunc);
-    file.close();
-    // 重新打开文件
-    db_io_.open(db_file_, std::ios::out | std::ios::binary);
+
+    // 创建临时文件
+    std::string temp_file = db_file_ + ".tmp";
+    std::ofstream temp(temp_file, std::ios::binary);
+
+    // 复制前 new_size 页到临时文件
+    std::ifstream src(db_file_, std::ios::binary);
+    for (int i = 0; i < new_size; ++i) {
+        char page_data[PAGE_SIZE];
+        src.read(page_data, PAGE_SIZE);
+        temp.write(page_data, PAGE_SIZE);
+    }
+    src.close();
+    temp.close();
+
+    // 替换原文件
+    std::remove(db_file_.c_str());
+    std::rename(temp_file.c_str(), db_file_.c_str());
+
+    // 重新打开文件流
+    db_io_.open(db_file_, std::ios::in | std::ios::out | std::ios::binary);
 }
 
 
