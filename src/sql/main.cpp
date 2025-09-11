@@ -22,6 +22,24 @@ int main()
 {
     try
     {
+        File* inputFile = fopen("test.sql", "r");
+        if (!inputFile)
+        {
+            std::cerr << "无法打开输入文件 test.sql" << std::endl;
+            return 1;
+        }
+        yyin = inputFile;
+        if (yyparse() != 0)
+        {
+            std::cerr << "解析错误，无法生成 AST。" << std::endl;
+            fclose(inputFile);
+            return 1;
+        }
+        fclose(inputFile);
+        std::cout << "--- 解析成功，生成 AST。 ---\n";
+        printAST(ast_root,0);
+
+
         // 创建一个根节点，用于包含所有语句
         ASTNode *root_node = new ASTNode(ROOT_NODE, "");
 
