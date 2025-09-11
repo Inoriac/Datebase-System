@@ -58,8 +58,6 @@ private:
     std::unordered_map<std::string, std::vector<int>> table_pages;  // 表名 -> 页ID列表
 
     // 内部方法
-    bool WriteTableSchemaToPage(const TableSchema& schema, int page_id);
-    bool ReadTableSchemaFromPage(TableSchema& schema, int page_id);
     int FindFreeSlotInPage(int page_id, const TableSchema& schema);     // 返回下一个可写的位置
     bool WriteRecordToPage(int page_id, int offset, const Record& record, const TableSchema& schema);
     bool ReadRecordFromPage(int page_id, int offset, Record& record, const TableSchema& schema);

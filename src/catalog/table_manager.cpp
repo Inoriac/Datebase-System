@@ -468,16 +468,7 @@ void TableManager::PrintAllTables() {
     }
 }
 
-// TODO：表的持久化实现
-bool TableManager::WriteTableSchemaToPage(const TableSchema &schema, int page_id) {
-    // 暂时返回true，避免编译错误
-    return true;
-}
-
-bool TableManager::ReadTableSchemaFromPage(TableSchema &schema, int page_id) {
-    // 暂时返回true，避免编译错误
-    return true;
-}
+// （删除未使用的表结构页持久化占位实现）
 
 // ========= 记录存取 ===========
 int TableManager::FindFreeSlotInPage(int page_id, const TableSchema &schema) {
