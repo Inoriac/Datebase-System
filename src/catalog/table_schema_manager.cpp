@@ -38,10 +38,7 @@ bool TableSchemaManager::SaveTableSchema(const TableSchema& schema) {
     if (!InitializeSystemCatalog()) {
         return false;
     }
-    
-    // 先删除旧的表结构记录（如果存在）
-    DeleteTableSchema(schema.table_name_);
-    
+
     // 序列化表结构
     std::string schema_data = SerializeSchema(schema);
     
@@ -50,7 +47,7 @@ bool TableSchemaManager::SaveTableSchema(const TableSchema& schema) {
     record.AddValue(Value(schema.table_name_));
     record.AddValue(Value(schema_data));
     
-    // 使用 TableManager 插入记录到系统目录表
+    // 使用 TableManager 插入记录到系统目录表（保留历史，读取时取最新）
     return table_manager_->InsertRecord(SYSTEM_CATALOG_TABLE_NAME, record);
 }
 
@@ -63,8 +60,9 @@ bool TableSchemaManager::LoadTableSchema(const std::string& table_name, TableSch
     // 使用 TableManager 查询系统目录表
     std::vector<Record> records = table_manager_->SelectRecords(SYSTEM_CATALOG_TABLE_NAME);
     
-    // 查找指定表名的记录
-    for (const Record& record : records) {
+    // 查找指定表名的记录（从后往前，取最新）
+    for (auto it = records.rbegin(); it != records.rend(); ++it) {
+        const Record& record = *it;
         if (record.values_.size() >= 2) {
             if (std::holds_alternative<std::string>(record.values_[0])) {
                 std::string stored_table_name = std::get<std::string>(record.values_[0]);
@@ -119,7 +117,7 @@ bool TableSchemaManager::LoadAllTableSchemas(std::unordered_map<std::string, Tab
     // 使用 TableManager 查询系统目录表
     std::vector<Record> records = table_manager_->SelectRecords(SYSTEM_CATALOG_TABLE_NAME);
     
-    // 反序列化所有表结构
+    // 反序列化所有表结构（遇到同名时用后出现的覆盖前者）
     for (const Record& record : records) {
         if (record.values_.size() >= 2) {
             if (std::holds_alternative<std::string>(record.values_[0]) &&
@@ -130,7 +128,7 @@ bool TableSchemaManager::LoadAllTableSchemas(std::unordered_map<std::string, Tab
                 
                 TableSchema schema;
                 if (DeserializeSchema(schema_data, schema)) {
-                    schemas.emplace(table_name, schema);
+                    schemas[table_name] = schema;
                 }
             }
         }
@@ -222,4 +220,42 @@ TableSchema TableSchemaManager::CreateSystemCatalogSchema() {
     schema.primary_key_index_ = 0; // 表名作为主键
     
     return schema;
+}
+
+// ========== 表结构变更实现 ==========
+bool TableSchemaManager::AddColumn(const std::string& table_name, const Column& column) {
+    TableSchema schema;
+    if (!LoadTableSchema(table_name, schema)) return false;
+    schema.AddColumn(column);
+    return SaveTableSchema(schema);
+}
+
+bool TableSchemaManager::DropColumn(const std::string& table_name, const std::string& column_name) {
+    TableSchema schema;
+    if (!LoadTableSchema(table_name, schema)) return false;
+    int idx = schema.GetColumnIndex(column_name);
+    if (idx < 0) return false;
+    schema.columns_.erase(schema.columns_.begin() + idx);
+    if (schema.primary_key_index_ == idx) schema.primary_key_index_ = -1;
+    else if (schema.primary_key_index_ > idx) schema.primary_key_index_--;
+    return SaveTableSchema(schema);
+}
+
+bool TableSchemaManager::ModifyColumn(const std::string& table_name, const std::string& column_name, const Column& new_def) {
+    TableSchema schema;
+    if (!LoadTableSchema(table_name, schema)) return false;
+    int idx = schema.GetColumnIndex(column_name);
+    if (idx < 0) return false;
+    schema.columns_[idx] = new_def;
+    // 主键位置若对应列被修改且名称变更不影响索引；类型长度变化由上层负责数据迁移
+    return SaveTableSchema(schema);
+}
+
+bool TableSchemaManager::RenameColumn(const std::string& table_name, const std::string& column_name, const std::string& new_name) {
+    TableSchema schema;
+    if (!LoadTableSchema(table_name, schema)) return false;
+    int idx = schema.GetColumnIndex(column_name);
+    if (idx < 0) return false;
+    schema.columns_[idx].column_name_ = new_name;
+    return SaveTableSchema(schema);
 }

@@ -145,3 +145,48 @@ TEST(TableSchemaManagerTest, OverwriteExistingSchema) {
     }
     std::remove(db.c_str());
 }
+
+// ========== 表结构变更 API 测试 ==========
+TEST(TableSchemaManagerTest, AlterColumnOperations) {
+    std::string db = MakeTempDbFileTSM("alter");
+    {
+        DiskManager dm(db);
+        BufferPoolManager bpm(16, &dm);
+        TableManager tm(&bpm);
+        TableSchemaManager tsm(&bpm, &tm);
+
+        // 初始表
+        TableSchema s("alter_t");
+        s.AddColumn(Column("id", DataType::Int, 4, false));
+        s.AddColumn(Column("name", DataType::Varchar, 32, true));
+        s.primary_key_index_ = 0;
+        ASSERT_TRUE(tsm.SaveTableSchema(s));
+
+        // 1) Add column
+        ASSERT_TRUE(tsm.AddColumn("alter_t", Column("active", DataType::Bool, 0, true)));
+        TableSchema s1; ASSERT_TRUE(tsm.LoadTableSchema("alter_t", s1));
+        ASSERT_EQ(s1.GetColumnCount(), 3u);
+        EXPECT_EQ(s1.columns_[2].column_name_, "active");
+        EXPECT_EQ(s1.columns_[2].type_, DataType::Bool);
+
+        // 2) Modify column (change length)
+        ASSERT_TRUE(tsm.ModifyColumn("alter_t", "name", Column("name", DataType::Varchar, 64, true)));
+        TableSchema s2; ASSERT_TRUE(tsm.LoadTableSchema("alter_t", s2));
+        ASSERT_EQ(s2.GetColumnCount(), 3u);
+        EXPECT_EQ(s2.columns_[1].length_, 64);
+
+        // 3) Rename column
+        ASSERT_TRUE(tsm.RenameColumn("alter_t", "name", "username"));
+        TableSchema s3; ASSERT_TRUE(tsm.LoadTableSchema("alter_t", s3));
+        ASSERT_EQ(s3.GetColumnCount(), 3u);
+        EXPECT_EQ(s3.columns_[1].column_name_, "username");
+
+        // 4) Drop column
+        ASSERT_TRUE(tsm.DropColumn("alter_t", "active"));
+        TableSchema s4; ASSERT_TRUE(tsm.LoadTableSchema("alter_t", s4));
+        ASSERT_EQ(s4.GetColumnCount(), 2u);
+        EXPECT_EQ(s4.columns_[0].column_name_, "id");
+        EXPECT_EQ(s4.columns_[1].column_name_, "username");
+    }
+    std::remove(db.c_str());
+}
