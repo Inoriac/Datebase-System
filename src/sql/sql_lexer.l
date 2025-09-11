@@ -25,47 +25,63 @@ ID_CHAR  [a-zA-Z0-9_]
 [ \t\n]+                { /* 忽略空白 */ }
 --.* { /* 忽略注释 */ }
 
+"SELECT"                { return K_SELECT; }
+"FROM"                  { return K_FROM; }
+"WHERE"                 { return K_WHERE; }
 "CREATE"                { return K_CREATE; }
 "TABLE"                 { return K_TABLE; }
 "INSERT"                { return K_INSERT; }
 "INTO"                  { return K_INTO; }
 "VALUES"                { return K_VALUES; }
-"SELECT"                { return K_SELECT; }
-"FROM"                  { return K_FROM; }
-"WHERE"                 { return K_WHERE; }
+"DELETE"                { return K_DELETE; }
+"INT"                   { return K_INT; }
+"VARCHAR"               { return K_VARCHAR; }
 
+">="                    { return OP_GTE; }
+"<="                    { return OP_LTE; }
+"!="                    { return OP_NEQ; }
+">"                     { return OP_GT; }
+"<"                     { return OP_LT; }
+"="                     { return OP_EQ; }
 
-/* * 识别标识符：
- * 1. 将匹配到的字符串 yytext 复制一份 (因为 yytext 是内部缓冲区，很快会被覆盖)。
- * strdup 是完成这个任务的便捷函数。
- * 2. 将复制后的字符串指针存入 yylval.str_val。
- * 3. 返回 IDENTIFIER Token 类型。
- */
 {LETTER}({ID_CHAR})* {
+    /* * 识别标识符：
+    * 1. 将匹配到的字符串 yytext 复制一份 (因为 yytext 是内部缓冲区，很快会被覆盖)。
+    * strdup 是完成这个任务的便捷函数。
+    * 2. 将复制后的字符串指针存入 yylval.str_val。
+    * 3. 返回 IDENTIFIER Token 类型。
+    */
     yylval.str_val = strdup(yytext);
     return IDENTIFIER;
 }
 
-/* * 识别整型常量：
- * 1. 使用 atoi 将字符串转换为整数。
- * 2. 将整数值存入 yylval.int_val。
- * 3. 返回 INTEGER_CONST Token 类型。
- */
+
 {DIGIT}+                {
+    /* * 识别整型常量：
+    * 1. 使用 atoi 将字符串转换为整数。
+    * 2. 将整数值存入 yylval.int_val。
+    * 3. 返回 INTEGER_CONST Token 类型。
+    */
     yylval.int_val = atoi(yytext);
     return INTEGER_CONST;
 }
 
-/* 识别字符串常量，处理方式与标识符类似 */
 '([^']|'')*'            {
+    /* 识别字符串常量，处理方式与标识符类似 */
     yylval.str_val = strdup(yytext);
     return STRING_CONST;
 }
 
-/* * 对于单字符的运算符和分隔符，Bison可以直接使用它们的ASCII值作为Token类型。
- * 所以我们直接返回这个字符即可。
- */
-[(),;]                  { return yytext[0]; }
+[(),;]                  { 
+    /* * 对于单字符的分隔符，Bison可以直接使用它们的ASCII值作为Token类型。
+    * 所以我们直接返回这个字符
+    */
+    return yytext[0]; 
+}
+"*"                    {
+    /* 对于*,直接返回* */
+    return yytext[0];
+}
 
 .                       { 
     /* 遇到无法识别的字符 */
