@@ -10,8 +10,24 @@ include_directories(include)
 # ====================
 # storage 模块库
 # ====================
+add_library(storage
+        src/storage/disk_manager.cpp
+        src/storage/buffer_pool_manager.cpp
+)
 
 target_include_directories(storage PUBLIC include)
+
+# ====================
+# catalog 模块库
+# ====================
+add_library(catalog
+        src/catalog/record_serializer.cpp
+        src/catalog/table_manager.cpp
+        src/catalog/table_schema_manager.cpp
+)
+
+target_include_directories(catalog PUBLIC include)
+
 
 # ====================
 # 主程序
@@ -38,13 +54,14 @@ enable_testing()
 # 测试程序
 # ====================
 # 1. 定义测试程序
-add_executable(test_storage
+add_executable(test_db
         tests/test_storage.cpp
+        tests/test_table_schema_manager.cpp
 )
 
 # 2. 链接库
-target_link_libraries(test_storage PRIVATE storage gtest gtest_main)
+target_link_libraries(test_db PRIVATE storage catalog gtest gtest_main)
 
 # 3. 启用 gtest 自动发现测试
 include(GoogleTest)
-gtest_discover_tests(test_storage)
+gtest_discover_tests(test_db)
