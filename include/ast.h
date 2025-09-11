@@ -15,9 +15,8 @@ enum ASTNodeType
     INSERT_STMT,
     SELECT_STMT,
     DELETE_STMT,              // 新增: DELETE语句节点
-
-    EXPRESSION_NODE,            // 新增: 通用表达式节点 (用于WHERE)
     
+    // 叶子节点类型
     IDENTIFIER_NODE,
     DATA_TYPE_NODE,
     INTEGER_LITERAL_NODE,
@@ -29,8 +28,10 @@ enum ASTNodeType
     VALUES_LIST,
     SELECT_LIST,  // 新增
     
+    // 逻辑表达式节点类型
     WHERE_CLAUSE, // 新增
-    EQUAL_OPERATOR // 新增
+    EQUAL_OPERATOR,
+    BINARY_EXPR // 二元表达式,value 为操作符类型，如 '=',左右子节点分别为操作数
 };
 
 // 定义类并内联实现方法

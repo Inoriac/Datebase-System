@@ -3,6 +3,8 @@
 #include "sql_semantic_analyzer.h" // 假设这是你的语义分析函数声明文件
 #include <iostream>
 
+#include <cstdio>
+
 // Bison/Flex 生成的函数和全局变量的外部声明
 extern int yyparse();
 extern FILE* yyin;
@@ -22,7 +24,7 @@ int main()
 {
     try
     {
-        File* inputFile = fopen("test.sql", "r");
+        FILE* inputFile = fopen("test.sql", "r");
         if (!inputFile)
         {
             std::cerr << "无法打开输入文件 test.sql" << std::endl;
@@ -38,7 +40,8 @@ int main()
         fclose(inputFile);
         std::cout << "--- 解析成功，生成 AST。 ---\n";
         printAST(ast_root,0);
-
+        semantic_analysis(ast_root);
+        std::cout << "语义分析通过。\n";
 
         // 创建一个根节点，用于包含所有语句
         ASTNode *root_node = new ASTNode(ROOT_NODE, "");

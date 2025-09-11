@@ -51,6 +51,7 @@ ASTNode* ast_root = nullptr;
 %type <node> optional_column_list delete_statement
 %type <node> select_list optional_where_clause where_clause expression
 %type <node> comparison_operator literal
+%type <node> data_type optional_varchar_length
 
 // 定义操作符 Token
 %token OP_EQ OP_LT OP_GT OP_LTE OP_GTE OP_NEQ
@@ -75,7 +76,7 @@ program:
 statements:
     statement {
         // 只有一个语句，创建一个列表节点，并把该语句作为子节点
-        $$ = new ASTNode(SQL_STATEMENTS_LIST);
+        $$ = new ASTNode(ROOT_NODE, "");
         $$->addChild($1);
     }
     | statements statement {
@@ -100,7 +101,7 @@ statement:
 create_statement:
     K_CREATE K_TABLE IDENTIFIER '(' column_definitions ')' {
         // 创建一个 CREATE_TABLE_STMT 节点
-        $$ = new ASTNode(CREATE_TABLE_STMT);
+        $$ = new ASTNode(CREATE_TABLE_STMT, "");
         // 子节点1: 表名 (IDENTIFIER)
         $$->addChild(new ASTNode(IDENTIFIER_NODE, $3));
         // 子节点2: 列定义列表
@@ -112,7 +113,7 @@ create_statement:
 
 column_definitions:
     column_definition {
-        $$ = new ASTNode(COLUMN_DEFINITIONS_LIST);
+        $$ = new ASTNode(COLUMN_DEFINITIONS_LIST, "");
         $$->addChild($1);
     }
     | column_definitions ',' column_definition {
@@ -122,13 +123,29 @@ column_definitions:
     ;
 
 column_definition:
-    IDENTIFIER K_INT {
+    IDENTIFIER data_type {
         $$ = new ASTNode(IDENTIFIER_NODE, $1);
+        $$->addChild($2);
         free($1);
     }
-    | IDENTIFIER K_VARCHAR '(' INTEGER_CONST ')' {
-        $$ = new ASTNode(IDENTIFIER_NODE, $1);
-        free($1);
+    ;
+
+data_type:
+    K_INT {
+        $$ = new ASTNode(DATA_TYPE_NODE, "INT");
+    }
+    | K_VARCHAR optional_varchar_length {
+        // 将长度信息存储在 data_type 节点的 value 中
+        $$ = new ASTNode(DATA_TYPE_NODE, "VARCHAR");
+        // 如果有长度定义 ($2 不为 nullptr)，可以将其作为子节点
+        $$->addChild($2);
+    }
+    ;
+
+optional_varchar_length:
+    /* empty */ { $$ = nullptr; }
+    | '(' INTEGER_CONST ')' {
+        $$ = new ASTNode(INTEGER_LITERAL_NODE, std::to_string($2));
     }
     ;
 
@@ -138,7 +155,7 @@ column_definition:
  */
 select_statement:
     K_SELECT select_list K_FROM IDENTIFIER optional_where_clause {
-        $$ = new ASTNode(SELECT_STMT);
+        $$ = new ASTNode(SELECT_STMT, "");
         $$->addChild($2);
         $$->addChild(new ASTNode(IDENTIFIER_NODE, $4));
         $$->addChild($5);
@@ -148,14 +165,24 @@ select_statement:
 
 select_list:
     '*' { 
-        $$ = new ASTNode(IDENTIFIER_NODE, "*");
+        $$ = new ASTNode(SELECT_LIST, "");
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, "*"));
     }
-    | column_list {  $$ = $1; }
+    | column_list { 
+        // 将 column_list 包装在 SELECT_LIST 节点中
+        $$ = new ASTNode(SELECT_LIST, "");
+        // column_list 的子节点是 IDENTIFIER_NODE, 把它们移过来
+        for(auto child : $1->children) {
+            $$->addChild(child);
+        }
+        $1->children.clear(); // 防止双重释放
+        delete $1;
+    }
     ;
 
 column_list:
     column_name {
-        $$ = new ASTNode(COLUMN_LIST);
+        $$ = new ASTNode(COLUMN_LIST, ""); 
         $$->addChild($1);
     }
     | column_list ',' column_name {
@@ -178,8 +205,8 @@ optional_where_clause:
 
 where_clause:
     K_WHERE expression {
-        // 直接返回表达式子树
-        $$ = $2;
+        $$ = new ASTNode(WHERE_CLAUSE, "");
+        $$->addChild($2); // 将表达式作为 WHERE_CLAUSE 的子节点
     }
 ;
 
@@ -188,13 +215,13 @@ where_clause:
  */
 insert_statement:
     K_INSERT K_INTO IDENTIFIER optional_column_list K_VALUES '(' value_list ')' {
-        $$ = new ASTNode(INSERT_STMT);
+        $$ = new ASTNode(INSERT_STMT, "");
         // 子节点1: 表名
         $$->addChild(new ASTNode(IDENTIFIER_NODE, $3));
         // 子节点2: 可选的列列表 (可能为nullptr)
         $$->addChild($4);
         // 子节点3: 值列表
-        $$->addChild($7);
+        $$->addChild($7);   
         free($3);
     }
     ;
@@ -211,7 +238,7 @@ optional_column_list:
 
 value_list:
     value {
-        $$ = new ASTNode(VALUES_LIST);
+        $$ = new ASTNode(VALUES_LIST, "");
         $$->addChild($1);
     }
     | value_list ',' value {
@@ -228,7 +255,7 @@ value:
  */
 delete_statement:
     K_DELETE K_FROM IDENTIFIER optional_where_clause {
-        $$ = new ASTNode(DELETE_STMT);
+        $$ = new ASTNode(DELETE_STMT, "");
         // 子节点1: 表名
         $$->addChild(new ASTNode(IDENTIFIER_NODE, $3));
         // 子节点2: 可选的 WHERE 子句 (可能为nullptr)
@@ -243,9 +270,7 @@ delete_statement:
  */
 expression:
     IDENTIFIER comparison_operator literal {
-        // $2 是 comparison_operator 返回的节点，其value已设为操作符
-        $$ = $2; 
-        // 将列名和字面量作为操作符节点的子节点
+        $$ = $2;
         $$->addChild(new ASTNode(IDENTIFIER_NODE, $1));
         $$->addChild($3);
         free($1);
@@ -253,12 +278,12 @@ expression:
     ;
 
 comparison_operator:
-    OP_EQ  { $$ = new ASTNode(EXPRESSION_NODE, "=");  }
-    | OP_NEQ { $$ = new ASTNode(EXPRESSION_NODE, "!="); }
-    | OP_GT  { $$ = new ASTNode(EXPRESSION_NODE, ">");  }
-    | OP_GTE  { $$ = new ASTNode(EXPRESSION_NODE, ">="); }
-    | OP_LT  { $$ = new ASTNode(EXPRESSION_NODE, "<");  }
-    | OP_LTE  { $$ = new ASTNode(EXPRESSION_NODE, "<="); }
+    OP_EQ  { $$ = new ASTNode(BINARY_EXPR, "=");  }
+    | OP_NEQ { $$ = new ASTNode(BINARY_EXPR, "!="); }
+    | OP_GT  { $$ = new ASTNode(BINARY_EXPR, ">");  }
+    | OP_GTE  { $$ = new ASTNode(BINARY_EXPR, ">="); }
+    | OP_LT  { $$ = new ASTNode(BINARY_EXPR, "<");  }
+    | OP_LTE  { $$ = new ASTNode(BINARY_EXPR, "<="); }
     ;
 
 literal:
@@ -312,7 +337,7 @@ ASTNode* parse_sql_string(const std::string& sql) {
 }
 
 // 简单的 AST 打印函数，用于演示
-void print_ast(ASTNode* node, int indent = 0) {
+/* void print_ast(ASTNode* node, int indent = 0) {
     if (!node) return;
     for (int i = 0; i < indent; ++i) std::cout << "  ";
     std::cout << "Type: " << node->type;
@@ -323,10 +348,10 @@ void print_ast(ASTNode* node, int indent = 0) {
     for (ASTNode* child : node->children) {
         print_ast(child, indent + 1);
     }
-}
+} */
 
 // 主函数 (用于独立测试)
-int main() {
+/* int main() {
     std::string sql_query;
     std::cout << "Enter SQL statements. Type 'exit' or 'quit' to leave." << std::endl;
 
@@ -366,4 +391,4 @@ int main() {
 
     std::cout << "Goodbye!" << std::endl;
     return 0;
-}
+} */

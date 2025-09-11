@@ -13,11 +13,15 @@ TEST_SQL_FILE="test.sql"
 
 # 获取脚本所在的目录，也就是项目根目录
 PROJECT_ROOT=$(dirname "$(realpath "$0")")
-INCLUDE_DIR="$PROJECT_ROOT/../../include"
+PROJECT_ROOT="$PROJECT_ROOT/../.."
+INCLUDE_DIR="$PROJECT_ROOT/include"
+
+BUILD_DIR="$PROJECT_ROOT/build"
+EXECUTABLE_NAME="sql_test"
 
 # 由工具生成的文件
 PARSER_CPP="sql_parser.tab.cpp"
-PARSER_HPP="sql_parser.tab.hpp"
+PARSER_HPP="sql_parser.tab.hpp" 
 LEXER_CPP="sql_lexer.yy.cpp"
 TARGET_EXEC="sql_parser"
 
@@ -34,7 +38,7 @@ cleanup() {
 # 无论脚本是正常结束，还是因为错误中断，或者被用户Ctrl+C终止，
 # EXIT 信号都会被触发，从而执行 cleanup 函数。
 # 这是确保目录干净的最可靠方法。
-# trap cleanup EXIT
+trap cleanup EXIT
 
 # --- 编译步骤 ---
 echo "--- 1. 检查所需文件... ---"
@@ -53,19 +57,33 @@ echo "--- 3. 使用 Flex 编译词法文件 ($LEXER_FILE)... ---"
 # -o: 指定输出的.cpp文件名
 flex -o "$LEXER_CPP" "$LEXER_FILE"
 
-echo "--- 4. 使用 g++ 编译链接 C++ 代码... ---"
-# -lfl: 链接 flex 库，这是运行 flex 生成的代码所必需的
+# echo "--- 4. 使用 g++ 编译链接 C++ 代码... ---"
+# # -lfl: 链接 flex 库，这是运行 flex 生成的代码所必需的
 g++ -std=c++17 -g \
     -I"$INCLUDE_DIR" \
+    "main.cpp" \
     "sql_parser.tab.cpp" \
     "sql_lexer.yy.cpp" \
-    -o "$TARGET_EXEC" -lfl
+    "sql_semantic_analyzer.cpp" \
+    "symbol_table.cpp" \
+    -o "$BUILD_DIR/$EXECUTABLE_NAME"
 
-# --- 运行步骤 ---
-echo "--- 5. 运行解析器，测试文件 ($TEST_SQL_FILE)... ---"
+# # --- 运行步骤 ---
+# echo "--- 5. 运行解析器，测试文件 ($TEST_SQL_FILE)... ---"
+# echo "--- 解析器输出如下: ---"
+# # 将测试SQL文件作为参数传递给生成的可执行程序
+# ./"$TARGET_EXEC" "$TEST_SQL_FILE"
+# echo "--------------------------"
+
+# 5. 运行可执行文件
+echo -e "--- 5. 运行解析器，测试文件 ($TEST_SQL_FILE)... ---"
+if [ ! -f "$TEST_SQL_FILE" ]; then
+    echo -e "测试文件 '$TEST_SQL_FILE' 未找到"
+    exit 1
+fi
+
 echo "--- 解析器输出如下: ---"
-# 将测试SQL文件作为参数传递给生成的可执行程序
-./"$TARGET_EXEC" "$TEST_SQL_FILE"
+"$BUILD_DIR/$EXECUTABLE_NAME" "$TEST_SQL_FILE"
 echo "--------------------------"
 
 
