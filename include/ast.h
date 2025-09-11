@@ -3,41 +3,63 @@
 
 #include <string>
 #include <vector>
+#include <variant>
 
 // 定义你的节点类型
-enum ASTNodeType {
-    SQL_STATEMENTS_LIST,
+enum ASTNodeType
+{
+    ROOT_NODE,
+
+    // 语句类型
     CREATE_TABLE_STMT,
     INSERT_STMT,
     SELECT_STMT,
     DELETE_STMT,              // 新增: DELETE语句节点
+
     EXPRESSION_NODE,            // 新增: 通用表达式节点 (用于WHERE)
+    
     IDENTIFIER_NODE,
+    DATA_TYPE_NODE,
     INTEGER_LITERAL_NODE,
     STRING_LITERAL_NODE,
+    
+    // 复合节点类型
     COLUMN_DEFINITIONS_LIST,
     COLUMN_LIST,                // 新增: 独立的列名列表节点
-    VALUES_LIST
+    VALUES_LIST,
+    SELECT_LIST,  // 新增
+    
+    WHERE_CLAUSE, // 新增
+    EQUAL_OPERATOR // 新增
 };
 
 // 定义类并内联实现方法
-class ASTNode {
+class ASTNode
+{
 public:
     ASTNodeType type;
-    std::string value;
-    std::vector<ASTNode*> children;
+    // 限定名
+    std::variant<std::string, int, bool> value;
+    std::vector<ASTNode *> children;
 
-    ASTNode(ASTNodeType node_type, const std::string& node_value = "")
+    ASTNode(ASTNodeType node_type, const std::string &node_value)
         : type(node_type), value(node_value) {}
 
-    ~ASTNode() {
-        for (ASTNode* child : children) {
+    ASTNode(ASTNodeType node_type, const int node_value)
+        : type(node_type), value(node_value) {}
+
+    ~ASTNode()
+    {
+        for (ASTNode *child : children)
+        {
             delete child;
         }
     }
 
-    void addChild(ASTNode* child_node) {
-        if (child_node) {
+    void addChild(ASTNode *child_node)
+    {
+        if (child_node)
+        {
             children.push_back(child_node);
         }
     }
