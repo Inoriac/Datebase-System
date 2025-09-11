@@ -3,7 +3,7 @@
 //
 
 #pragma once
-#include "storage/page.h"
+#include "../catalog/page.h"
 #include "storage/disk_manager.h"
 #include <unordered_map>
 #include <list>

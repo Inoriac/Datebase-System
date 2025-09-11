@@ -3,7 +3,7 @@
 //
 
 #include "storage/disk_manager.h"
-#include "storage/page.h"
+#include "../../include/catalog/page.h"
 #include <iostream>
 #include <algorithm>
 

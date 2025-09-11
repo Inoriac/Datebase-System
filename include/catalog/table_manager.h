@@ -4,8 +4,8 @@
 
 #pragma once
 #include "types.h"
-#include "buffer_pool_manager.h"
-#include "record_serializer.h"
+#include "../storage/buffer_pool_manager.h"
+#include "table_schema_manager.h"
 #include <unordered_map>
 #include <vector>
 
@@ -37,6 +37,10 @@ public:
     // 调试信息
     void PrintTableInfo(const std::string& table_name);
     void PrintAllTables();
+    
+    // 表结构持久化管理
+    bool LoadAllTableSchemas();
+    bool SaveAllTableSchemas();
 
     // 页头信息(存储在页的前几个字节)
     struct PageHeader {
@@ -49,6 +53,7 @@ public:
 
 private:
     BufferPoolManager* buffer_pool_manager_;
+    TableSchemaManager* schema_manager_;                            // 表结构管理器
     std::unordered_map<std::string, TableSchema> table_schemas_;    // 表名 -> 表对象
     std::unordered_map<std::string, std::vector<int>> table_pages;  // 表名 -> 页ID列表
 

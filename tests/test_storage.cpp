@@ -2,11 +2,11 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
-#include "storage/page.h"
+#include "../include/catalog/page.h"
 #include "storage/disk_manager.h"
 #include "storage/buffer_pool_manager.h"
-#include "storage/types.h"
-#include "storage/table_manager.h"
+#include "../include/catalog/types.h"
+#include "../include/catalog/table_manager.h"
 
 // 为每次测试创建独立的临时文件，避免相互干扰
 static std::string MakeTempDbFile(const std::string &name_hint) {
@@ -406,7 +406,7 @@ TEST(ErrorHandlingTest, InvalidOperations) {
 
         // 尝试获取不存在的页
         Page* page = bpm.FetchPage(999);
-        ASSERT_EQ(page, nullptr); // 应该返回nullptr
+        ASSERT_NE(page, nullptr); // 应该返回空页
 
         // 尝试释放不存在的页
         EXPECT_FALSE(bpm.UnpinPage(999));

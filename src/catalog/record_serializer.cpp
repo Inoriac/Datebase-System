@@ -2,7 +2,7 @@
 // Created by Huang_cj on 2025/9/9.
 //
 
-#include "storage/record_serializer.h"
+#include "../../include/catalog/record_serializer.h"
 #include <iostream>
 
 bool RecordSerializer::SerializeRecord(const Record &record, const TableSchema &schema, char *page_data, int offset) {

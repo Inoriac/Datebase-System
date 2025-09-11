@@ -2,14 +2,40 @@
 // Created by Huang_cj on 2025/9/9.
 //
 
-#include "storage/table_manager.h"
-#include "storage/page.h"
+#include "../../include/catalog/table_manager.h"
+#include "../../include/catalog/page.h"
+#include "../../include/catalog/table_schema_manager.h"
 #include <cstring>
 #include <algorithm>
 #include <cctype>
 #include <iostream>
 
+#include "../../include/catalog/record_serializer.h"
+
 using Header = TableManager::PageHeader;
+
+// ========= 表结构持久化管理方法定义 ===========
+bool TableManager::LoadAllTableSchemas() {
+    // 使用 TableSchemaManager 加载所有表结构
+    if (schema_manager_ == nullptr) {
+        return false;
+    }
+    return schema_manager_->LoadAllTableSchemas(table_schemas_);
+}
+
+bool TableManager::SaveAllTableSchemas() {
+    // 保存所有表结构到持久化存储
+    if (schema_manager_ == nullptr) {
+        return false;
+    }
+    bool success = true;
+    for (const auto& pair : table_schemas_) {
+        if (!schema_manager_->SaveTableSchema(pair.second)) {
+            success = false;
+        }
+    }
+    return success;
+}
 
 // 简单条件解析与比较辅助
 enum class CmpOp { EQ, NE, LT, LE, GT, GE };
@@ -146,9 +172,21 @@ static int ReadInt(const char* src) {
     return v;
 }
 
-TableManager::TableManager(BufferPoolManager *bpm): buffer_pool_manager_(bpm) {}
+TableManager::TableManager(BufferPoolManager *bpm): buffer_pool_manager_(bpm) {
+    // 创建表结构管理器
+    schema_manager_ = new TableSchemaManager(bpm, this);
+    
+    // 延迟加载所有表结构到内存，避免循环依赖
+    // LoadAllTableSchemas(); // 暂时注释掉，在第一次使用时加载
+}
 
-TableManager::~TableManager() = default;
+TableManager::~TableManager() {
+    // 保存所有表结构到磁盘
+    SaveAllTableSchemas();
+    
+    // 删除表结构管理器
+    delete schema_manager_;
+}
 
 // ========= 表管理 ===========
 bool TableManager::CreateTable(const TableSchema &schema) {
@@ -156,12 +194,22 @@ bool TableManager::CreateTable(const TableSchema &schema) {
 
     // 先更新内存状态
     table_schemas_.emplace(schema.table_name_, schema);
+    
+    // 持久化表结构（系统目录表本身除外，避免递归创建）
+    if (schema.table_name_ != TableSchemaManager::SystemCatalogTableName()) {
+        if (!schema_manager_->SaveTableSchema(schema)) {
+            // 持久化失败，回滚内存状态
+            table_schemas_.erase(schema.table_name_);
+            return false;
+        }
+    }
 
     // 分配页
     int first_page_id = AllocatePageForTable(schema.table_name_);
     if (first_page_id < 0) {
-        // 分配失败，回滚内存状态
+        // 分配失败，回滚内存状态和持久化状态
         table_schemas_.erase(schema.table_name_);
+        schema_manager_->DeleteTableSchema(schema.table_name_);
         return false;
     }
 
@@ -176,6 +224,7 @@ bool TableManager::CreateTable(const TableSchema &schema) {
         // 页头写入失败，回滚
         DeallocatePageForTable(schema.table_name_, first_page_id);
         table_schemas_.erase(schema.table_name_);
+        schema_manager_->DeleteTableSchema(schema.table_name_);
         return false;
     }
 
@@ -191,10 +240,15 @@ bool TableManager::DropTable(const std::string& table_name) {
     }
     table_pages.erase(table_name);
     table_schemas_.erase(table_name);
+    
+    // 从持久化存储中删除表结构
+    schema_manager_->DeleteTableSchema(table_name);
+    
     return true;
 }
 
 bool TableManager::TableExists(const std::string& table_name) {
+    // 仅检查内存中是否存在，避免与 TableSchemaManager 相互调用导致递归
     return table_schemas_.count(table_name) > 0;
 }
 
@@ -491,3 +545,4 @@ bool TableManager::ReadPageHeader(int page_id, PageHeader &header) {
     buffer_pool_manager_->UnpinPage(page_id);
     return true;
 }
+

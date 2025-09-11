@@ -26,11 +26,6 @@ Page *BufferPoolManager::FetchPage(int page_id) {
         return nullptr; // 无效页ID，直接返回nullptr
     }
 
-    // 检查页面是否已被删除
-    if (disk_manager_->IsPageFree(page_id)) {
-        return nullptr; // 页面已被删除，返回nullptr
-    }
-
     // 缓存命中
     if (page_table_.count(page_id)) {
         Page *page = page_table_[page_id];
@@ -68,6 +63,12 @@ Page *BufferPoolManager::FetchPage(int page_id) {
         new_page = victim_page;
     }
 
+    // 检查页ID是否有效
+    if (page_id >= disk_manager_->GetTotalPages()) {
+        // 页ID无效，不添加到缓存中
+        new_page->SetPageId(-1);
+        return nullptr;
+    }
 
     // 从磁盘中加载
     new_page->SetPageId(page_id);
