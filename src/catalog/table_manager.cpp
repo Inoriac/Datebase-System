@@ -399,6 +399,73 @@ std::vector<Record> TableManager::SelectRecordsWithCondition(const std::string &
     return out;
 }
 
+// ========= 更新 =========
+bool TableManager::UpdateRecord(const std::string &table_name, int record_id, const Record &new_record) {
+    auto it = table_schemas_.find(table_name);
+    if (it == table_schemas_.end()) return false;
+    const TableSchema &schema = it->second;
+    const int record_size = RecordSerializer::CalculateRecordSize(schema);
+
+    auto &pages = table_pages[table_name];
+    int base = 0;
+    for (int page_id : pages) {
+        Header header;
+        if (!ReadPageHeader(page_id, header)) return false;
+        if (record_id < base + header.record_count) {
+            int slot_index = record_id - base;
+            int offset = Header::HEADER_SIZE + slot_index * record_size;
+            // 直接覆盖写入新记录
+            return WriteRecordToPage(page_id, offset, new_record, schema);
+        }
+        base += header.record_count;
+    }
+    return false;
+}
+
+int TableManager::UpdateRecordsWithCondition(const std::string &table_name, const std::string &condition, const Record &new_record) {
+    auto it = table_schemas_.find(table_name);
+    if (it == table_schemas_.end()) return 0;
+    const TableSchema &schema = it->second;
+
+    // 空条件：更新全部
+    std::string cond = TrimSpaces(condition);
+    bool update_all = cond.empty();
+
+    // 准备条件解析
+    std::string col; CmpOp op; std::string lit; bool is_str=false, is_b=false; int iv=0; bool bv=false;
+    int col_idx = -1; DataType col_type = DataType::Int;
+    if (!update_all) {
+        if (!ParseCondition(cond, col, op, lit, is_str, is_b, iv, bv)) return 0;
+        col_idx = FindColumnIndexByName(schema, col);
+        if (col_idx < 0) return 0;
+        col_type = schema.columns_[static_cast<size_t>(col_idx)].type_;
+    }
+
+    const int record_size = RecordSerializer::CalculateRecordSize(schema);
+    int updated = 0;
+    for (int page_id : table_pages[table_name]) {
+        Header header;
+        if (!ReadPageHeader(page_id, header)) continue;
+        for (int i = 0; i < header.record_count; i++) {
+            int offset = Header::HEADER_SIZE + i * record_size;
+            Record rec;
+            if (!ReadRecordFromPage(page_id, offset, rec, schema)) continue;
+            if (rec.is_deleted_) continue;
+
+            bool matched = update_all;
+            if (!update_all) {
+                if (static_cast<size_t>(col_idx) < rec.values_.size()) {
+                    const Value &v = rec.values_[static_cast<size_t>(col_idx)];
+                    matched = CompareValues(v, col_type, op, lit, is_str, is_b, iv, bv);
+                }
+            }
+            if (matched) {
+                if (WriteRecordToPage(page_id, offset, new_record, schema)) updated++;
+            }
+        }
+    }
+    return updated;
+}
 // ========= 页管理 ===========
 int TableManager::AllocatePageForTable(const std::string &table_name) {
     if (!table_schemas_.count(table_name)) return -1;
@@ -467,8 +534,6 @@ void TableManager::PrintAllTables() {
         PrintTableInfo(name);
     }
 }
-
-// （删除未使用的表结构页持久化占位实现）
 
 // ========= 记录存取 ===========
 int TableManager::FindFreeSlotInPage(int page_id, const TableSchema &schema) {

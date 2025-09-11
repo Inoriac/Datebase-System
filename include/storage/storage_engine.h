@@ -1,8 +1,0 @@
-//
-// Created by Huang_cj on 2025/9/8.
-//
-
-#ifndef DATEBASE_SYSTEM_STORAGE_ENGINE_H
-#define DATEBASE_SYSTEM_STORAGE_ENGINE_H
-
-#endif //DATEBASE_SYSTEM_STORAGE_ENGINE_H

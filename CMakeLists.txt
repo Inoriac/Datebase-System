@@ -13,7 +13,6 @@ include_directories(include)
 add_library(storage
         src/storage/disk_manager.cpp
         src/storage/buffer_pool_manager.cpp
-        src/storage/storage_engine.cpp
 )
 
 target_include_directories(storage PUBLIC include)

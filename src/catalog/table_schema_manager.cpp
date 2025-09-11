@@ -1,5 +1,5 @@
 //
-// Created by Huang_cj on 2025/9/9.
+// Created by Huang_cj on 2025/9/11.
 //
 
 #include "catalog/table_schema_manager.h"
@@ -14,9 +14,7 @@ TableSchemaManager::TableSchemaManager(BufferPoolManager* bpm, TableManager* tm)
     : buffer_pool_manager_(bpm), table_manager_(tm) {
 }
 
-TableSchemaManager::~TableSchemaManager() {
-    // 析构函数不需要特殊处理
-}
+TableSchemaManager::~TableSchemaManager() = default;
 
 bool TableSchemaManager::InitializeSystemCatalog() {
     // 检查系统目录表是否已存在

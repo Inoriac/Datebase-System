@@ -26,6 +26,10 @@ public:
     std::vector<Record> SelectRecords(const std::string& table_name);
     std::vector<Record> SelectRecordsWithCondition(const std::string& table_name, const std::string& condition);
 
+    // 更新操作
+    bool UpdateRecord(const std::string& table_name, int record_id, const Record& new_record);
+    int UpdateRecordsWithCondition(const std::string& table_name, const std::string& condition, const Record& new_record);
+
     // 页管理
     int AllocatePageForTable(const std::string& table_name);
     bool DeallocatePageForTable(const std::string& table_name, int page_id);

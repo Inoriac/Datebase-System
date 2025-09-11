@@ -416,3 +416,72 @@ TEST(ErrorHandlingTest, InvalidOperations) {
     }
     std::remove(db.c_str());
 }
+
+// ========== 更新能力测试 ==========
+TEST(UpdateTest, UpdateByIdAndByCondition) {
+    std::string db = MakeTempDbFile("update");
+    {
+        DiskManager dm(db);
+        BufferPoolManager bpm(20, &dm);
+        TableManager tm(&bpm);
+
+        // 建表
+        TableSchema schema("u");
+        schema.AddColumn(Column("id", DataType::Int, 4, false));
+        schema.AddColumn(Column("name", DataType::Varchar, 32, true));
+        schema.AddColumn(Column("active", DataType::Bool, 0, true));
+        schema.primary_key_index_ = 0;
+        ASSERT_TRUE(tm.CreateTable(schema));
+
+        // 插入3条
+        for (int i = 0; i < 3; ++i) {
+            Record r;
+            r.AddValue(i);
+            r.AddValue(std::string("user") + std::to_string(i));
+            r.AddValue(i % 2 == 0);
+            ASSERT_TRUE(tm.InsertRecord("u", r));
+        }
+
+        // 按 id 更新第1条（逻辑序号0）
+        Record nr;
+        nr.AddValue(0);
+        nr.AddValue(std::string("Bob"));
+        nr.AddValue(false);
+        EXPECT_TRUE(tm.UpdateRecord("u", 0, nr));
+
+        auto all = tm.SelectRecords("u");
+        ASSERT_EQ(all.size(), 3u);
+        EXPECT_EQ(std::get<int>(all[0].values_[0]), 0);
+        EXPECT_EQ(std::get<std::string>(all[0].values_[1]), "Bob");
+        EXPECT_EQ(std::get<bool>(all[0].values_[2]), false);
+
+        // 条件批量更新 name = 'user2' 改为 'Zed'
+        Record nr2;
+        nr2.AddValue(2);
+        nr2.AddValue(std::string("Zed"));
+        nr2.AddValue(true);
+        int changed = tm.UpdateRecordsWithCondition("u", "name = 'user2'", nr2);
+        EXPECT_EQ(changed, 1);
+
+        auto zeds = tm.SelectRecordsWithCondition("u", "name = 'Zed'");
+        ASSERT_EQ(zeds.size(), 1u);
+        EXPECT_EQ(std::get<int>(zeds[0].values_[0]), 2);
+
+        // 空条件：全部更新为相同 active=false（保持 id 与 name 值覆盖）
+        Record nr3;
+        nr3.AddValue(999);
+        nr3.AddValue(std::string("ALL"));
+        nr3.AddValue(false);
+        int all_changed = tm.UpdateRecordsWithCondition("u", "", nr3);
+        EXPECT_EQ(all_changed, 3);
+
+        auto all2 = tm.SelectRecords("u");
+        ASSERT_EQ(all2.size(), 3u);
+        for (const auto &rec : all2) {
+            EXPECT_EQ(std::get<int>(rec.values_[0]), 999);
+            EXPECT_EQ(std::get<std::string>(rec.values_[1]), "ALL");
+            EXPECT_EQ(std::get<bool>(rec.values_[2]), false);
+        }
+    }
+    std::remove(db.c_str());
+}
