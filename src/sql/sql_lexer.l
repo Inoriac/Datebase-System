@@ -78,6 +78,10 @@ ID_CHAR  [a-zA-Z0-9_]
     */
     return yytext[0]; 
 }
+"*"                    {
+    /* 对于*,直接返回* */
+    return yytext[0];
+}
 
 .                       { 
     /* 遇到无法识别的字符 */

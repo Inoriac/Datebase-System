@@ -44,6 +44,12 @@
 #if YYDEBUG
 extern int yydebug;
 #endif
+/* "%code requires" blocks.  */
+#line 18 "sql_parser.y"
+
+    #include "ast.h"
+
+#line 53 "sql_parser.tab.hpp"
 
 /* Token kinds.  */
 #ifndef YYTOKENTYPE
@@ -82,12 +88,13 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 17 "sql_parser.y"
+#line 25 "sql_parser.y"
 
     int int_val;
-    char* str_val; 
+    char* str_val;
+    ASTNode* node; 
 
-#line 91 "sql_parser.tab.hpp"
+#line 98 "sql_parser.tab.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;

@@ -2,7 +2,7 @@
 %{
 #include <iostream>
 #include <string>
-#include <ast.h>
+#include "ast.h" // 包含 AST 节点定义
 
 // 声明由 Flex 生成的词法分析函数
 extern int yylex(); 
@@ -14,6 +14,10 @@ void yyerror(const char *s);
 ASTNode* ast_root = nullptr;
 
 %}
+
+%code requires {
+    #include "ast.h"
+}
 
 /* * 定义 yylval 的联合体类型。
  * 语法分析器通过这个联合体从词法分析器接收不同类型的值。
@@ -253,7 +257,7 @@ comparison_operator:
     | OP_NEQ { $$ = new ASTNode(EXPRESSION_NODE, "!="); }
     | OP_GT  { $$ = new ASTNode(EXPRESSION_NODE, ">");  }
     | OP_GTE  { $$ = new ASTNode(EXPRESSION_NODE, ">="); }
-    | OP_LT  { $$ = new ASTNode(EXPRESSION_NODE, "<");  }TT
+    | OP_LT  { $$ = new ASTNode(EXPRESSION_NODE, "<");  }
     | OP_LTE  { $$ = new ASTNode(EXPRESSION_NODE, "<="); }
     ;
 
@@ -276,26 +280,90 @@ void yyerror(const char *s) {
     std::cerr << "[Parser] Syntax Error at line " << yylineno << ": " << s << std::endl;
 }
 
-// 主函数 (用于独立测试)
-/* int main(int argc, char **argv) {
-    // 设置 Flex 从文件读取输入
-    extern FILE *yyin;
-    if (argc > 1) {
-        yyin = fopen(argv[1], "r");
-        if (!yyin) {
-            perror(argv[1]);
-            return 1;
-        }
+// 定义缓冲区状态的类型
+typedef struct yy_buffer_state* YY_BUFFER_STATE;
+// 从一个空结尾的字符串创建扫描缓冲区
+extern YY_BUFFER_STATE yy_scan_string(const char* str);
+// 删除扫描缓冲区，释放内存
+extern void yy_delete_buffer(YY_BUFFER_STATE buffer);
+
+ASTNode* parse_sql_string(const std::string& sql) {
+    // 1. 调用 Flex 的函数，为给定的字符串创建一个新的扫描缓冲区
+    YY_BUFFER_STATE buffer = yy_scan_string(sql.c_str());
+
+    // 2. 调用 Bison 的解析器。它会自动使用上面创建的缓冲区。
+    int result = yyparse();
+    
+    // 3. 清理/删除 Flex 创建的缓冲区
+    yy_delete_buffer(buffer);
+
+    // 4. 如果解析成功，返回 AST 根节点，否则返回 nullptr
+    if (result == 0) {
+        return ast_root;
     }
     
-    // 调用 Bison 生成的解析函数
-    // yyparse() 会在内部循环调用 yylex() 直到文件末尾
-    // 返回 0 表示成功，非 0 表示有语法错误
-    if (yyparse() == 0) {
-        std::cout << "Parsing completed successfully." << std::endl;
-    } else {
-        std::cout << "Parsing failed due to syntax errors." << std::endl;
+    // 解析失败，ast_root 可能状态不确定，确保返回 nullptr
+    // 并且如果 ast_root 已被部分创建，需要清理
+    if (ast_root) {
+        delete ast_root;
+        ast_root = nullptr;
+    }
+    return nullptr;
+}
+
+// 简单的 AST 打印函数，用于演示
+void print_ast(ASTNode* node, int indent = 0) {
+    if (!node) return;
+    for (int i = 0; i < indent; ++i) std::cout << "  ";
+    std::cout << "Type: " << node->type;
+    if (!node->value.empty()) {
+        std::cout << ", Value: '" << node->value << "'";
+    }
+    std::cout << std::endl;
+    for (ASTNode* child : node->children) {
+        print_ast(child, indent + 1);
+    }
+}
+
+// 主函数 (用于独立测试)
+int main() {
+    std::string sql_query;
+    std::cout << "Enter SQL statements. Type 'exit' or 'quit' to leave." << std::endl;
+
+    while (true) {
+        std::cout << "SQL> ";
+        std::getline(std::cin, sql_query);
+
+        if (sql_query == "exit" || sql_query == "quit") {
+            break;
+        }
+
+        if (sql_query.empty()) {
+            continue;
+        }
+
+        // 调用我们封装的解析函数
+        ASTNode* root = parse_sql_string(sql_query);
+
+        if (root) {
+            std::cout << "------------------------------------------" << std::endl;
+            std::cout << "Parsing successful! AST Structure:" << std::endl;
+            print_ast(root); // 打印 AST 树进行验证
+            std::cout << "------------------------------------------" << std::endl;
+            
+            // 在这里，您可以将 root 交给语义分析器
+            // semantic_analyzer.analyze(root);
+
+            // 清理内存
+            delete root;
+            ast_root = nullptr; // 重置全局指针
+        } else {
+            std::cerr << "------------------------------------------" << std::endl;
+            std::cerr << "Parsing failed." << std::endl;
+            std::cerr << "------------------------------------------" << std::endl;
+        }
     }
 
+    std::cout << "Goodbye!" << std::endl;
     return 0;
-} */
+}
