@@ -21,6 +21,7 @@ public:
 
     int GetTotalPages() const { return num_pages_; }
     int GetFreePages() const { return static_cast<int>(free_list_.size()); }
+    bool IsPageFree(int page_id) const; // 检查页面是否已被删除
 
     bool CompactDatabase(); // 压缩数据库文件，移除末尾的空闲页
 

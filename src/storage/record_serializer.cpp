@@ -162,7 +162,7 @@ int RecordSerializer::GetDataTypeSize(DataType type, int length) {
         case DataType::Int:
             return sizeof(int);
         case DataType::Varchar:
-            return sizeof(int) * length;
+            return sizeof(int) + length;
         case DataType::Bool:
             return sizeof(bool);
     }

@@ -31,6 +31,8 @@ struct TableSchema {
     std::vector<Column> columns_;
     int primary_key_index_;      // 主键索引,-1表示无主键
 
+    TableSchema() : primary_key_index_(-1) {}
+
     TableSchema(const std::string& name)
         : table_name_(name), primary_key_index_(-1) {}
 

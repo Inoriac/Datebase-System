@@ -46,6 +46,14 @@ void DiskManager::ReadPage(int page_id, char *page_data) {
         memset(page_data, 0, PAGE_SIZE);    // 初始化空页
         return;
     }
+    
+    // 检查页面是否已被删除
+    if (IsPageFree(page_id)) {
+        std::cout << "Attempted to read deleted page: " << page_id << std::endl;
+        memset(page_data, 0, PAGE_SIZE);    // 初始化空页
+        return;
+    }
+    
     // 读取 page_id 页的内容至 page_data 指向的内存
     db_io_.clear();
     db_io_.seekg(page_id * PAGE_SIZE, std::ios::beg);
@@ -79,6 +87,14 @@ void DiskManager::DeallocatePage(int page_id) {
     } else {
         std::cerr << "Warning: trying to deallocate invalid page_id " << page_id << std:: endl;
     }
+}
+
+// 检查页面是否已被删除
+bool DiskManager::IsPageFree(int page_id) const {
+    if (page_id < 0 || page_id >= num_pages_) {
+        return true; // 无效页ID视为已删除
+    }
+    return std::find(free_list_.begin(), free_list_.end(), page_id) != free_list_.end();
 }
 
 bool DiskManager::CompactDatabase() {

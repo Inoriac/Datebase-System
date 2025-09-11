@@ -16,8 +16,8 @@ public:
 
     // 表管理
     bool CreateTable(const TableSchema& schema);
-    bool DropTable(const TableSchema& schema);
-    bool TableExists(const TableSchema& schema);
+    bool DropTable(const std::string& table_name);
+    bool TableExists(const std::string& table_name);
     TableSchema* GetTableSchema(const std::string& table_name);
 
     // 记录操作
@@ -44,18 +44,18 @@ public:
         int free_space_offset;  // 空闲空间起始偏移
         int table_id;       // 表ID 用于验证
 
-        static const int HEADER_SIZE = 3;   // 3个int
+        static const int HEADER_SIZE = 12;   // 3个int，每个4字节
     };
 
 private:
     BufferPoolManager* buffer_pool_manager_;
-    std::unordered_map<std::string, TableSchema> table_schemas_;
+    std::unordered_map<std::string, TableSchema> table_schemas_;    // 表名 -> 表对象
     std::unordered_map<std::string, std::vector<int>> table_pages;  // 表名 -> 页ID列表
 
     // 内部方法
     bool WriteTableSchemaToPage(const TableSchema& schema, int page_id);
     bool ReadTableSchemaFromPage(TableSchema& schema, int page_id);
-    int FindFreeSlotInPage(int page_id, const TableSchema& schema);
+    int FindFreeSlotInPage(int page_id, const TableSchema& schema);     // 返回下一个可写的位置
     bool WriteRecordToPage(int page_id, int offset, const Record& record, const TableSchema& schema);
     bool ReadRecordFromPage(int page_id, int offset, Record& record, const TableSchema& schema);
 

@@ -21,6 +21,16 @@ BufferPoolManager::~BufferPoolManager() {
 
 // 从缓存池中取一个页，如果不在内存中则从磁盘加载
 Page *BufferPoolManager::FetchPage(int page_id) {
+    // 首先检查页ID是否有效
+    if (page_id >= disk_manager_->GetTotalPages()) {
+        return nullptr; // 无效页ID，直接返回nullptr
+    }
+
+    // 检查页面是否已被删除
+    if (disk_manager_->IsPageFree(page_id)) {
+        return nullptr; // 页面已被删除，返回nullptr
+    }
+
     // 缓存命中
     if (page_table_.count(page_id)) {
         Page *page = page_table_[page_id];
@@ -57,6 +67,7 @@ Page *BufferPoolManager::FetchPage(int page_id) {
         victim_page->SetPageId(-1);
         new_page = victim_page;
     }
+
 
     // 从磁盘中加载
     new_page->SetPageId(page_id);
@@ -108,6 +119,7 @@ bool BufferPoolManager::DeletePage(int page_id) {
         return false;
     }
 
+    bool page_existed = false;
     if (page_table_.count(page_id)) {
         Page *page = page_table_[page_id];
         if (page->IsDirty()) {
@@ -116,9 +128,17 @@ bool BufferPoolManager::DeletePage(int page_id) {
         page_table_.erase(page_id);
         lru_list_.remove(page_id);
         page->SetPageId(-1);
+        page_existed = true;
     }
-    disk_manager_->DeallocatePage(page_id);
-    return true;
+    
+    // 从磁盘释放页（如果页ID有效）
+    if (page_id < disk_manager_->GetTotalPages()) {
+        disk_manager_->DeallocatePage(page_id);
+        return true;
+    }
+    
+    // 只有当页在内存中存在时才返回true
+    return page_existed;
 }
 
 // 简单 LRU：淘汰链表尾的页
