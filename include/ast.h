@@ -15,30 +15,31 @@ struct Location {
 // 定义你的节点类型
 enum ASTNodeType
 {
-    ROOT_NODE,
+    ROOT_NODE = 0,
 
     // 语句类型
-    CREATE_TABLE_STMT,
-    INSERT_STMT,
-    SELECT_STMT,
-    DELETE_STMT,              // 新增: DELETE语句节点
-    
-    // 叶子节点类型
-    IDENTIFIER_NODE,
-    DATA_TYPE_NODE,
-    INTEGER_LITERAL_NODE,
-    STRING_LITERAL_NODE,
-    
+    CREATE_TABLE_STMT = 1,
+    INSERT_STMT = 2,
+    SELECT_STMT = 3,
+    DELETE_STMT = 4,
+
+    EXPRESSION_NODE = 5,
+
+    IDENTIFIER_NODE = 6,
+    DATA_TYPE_NODE = 7,
+    INTEGER_LITERAL_NODE = 8,
+    STRING_LITERAL_NODE = 9,
+
     // 复合节点类型
     COLUMN_DEFINITIONS_LIST,
     COLUMN_LIST,                // 新增: 独立的列名列表节点
     VALUES_LIST,
     SELECT_LIST,  // 新增
     
-    // 逻辑表达式节点类型
     WHERE_CLAUSE, // 新增
-    EQUAL_OPERATOR,
+    EQUAL_OPERATOR, // 新增
     BINARY_EXPR // 二元表达式,value 为操作符类型，如 '=',左右子节点分别为操作数
+
 };
 
 // 定义类并内联实现方法

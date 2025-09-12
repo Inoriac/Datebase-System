@@ -1,27 +1,20 @@
 #ifndef SYMBOL_TABLE_H
 #define SYMBOL_TABLE_H
 
-#include <string>
-#include <unordered_map>
-#include <vector>
+#include "table_info.h" // 包含 TableInfo 和 ColumnInfo 的定义
+#include <stdexcept>
 
-// 列的元数据
-struct ColumnInfo {
-    std::string name;
-    std::string type; // 例如 "INT", "STRING"
+// 模式目录类
+class Catalog {
+public:
+    void addTable(const TableInfo& table);
+    bool tableExists(const std::string& name) const;
+    const TableInfo& getTable(const std::string& name) const;
+private:
+    std::unordered_map<std::string, TableInfo> tables;
 };
 
-// 表的元数据
-struct TableInfo {
-    std::string name;
-    std::unordered_map<std::string, ColumnInfo> columns; // 按名称快速查找列
-    std::vector<std::string> column_order; // 记录列的原始顺序
-};
-
-// 全局符号表
-extern std::unordered_map<std::string, TableInfo> symbol_table;
-
-// 检查表是否存在的函数
-bool tableExists(const std::string& table_name);
+// 全局 Catalog 对象的声明
+extern Catalog catalog;
 
 #endif
