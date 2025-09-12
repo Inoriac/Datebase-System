@@ -10,6 +10,20 @@
 // 覆盖默认的 yyerror 函数声明，因为我们已经在 .y 文件中定义了它
 #define YY_DECL int yylex()
 void yyerror(const char* s);
+extern YYLTYPE yylloc; // Bison 提供的位置变量
+
+// 定义计数器
+static int column_count = 1;
+
+/* * 定义一个宏，在每次匹配 Token 后自动更新位置信息。
+ * Flex 会在执行每个规则的动作代码之前，先执行 YY_USER_ACTION。
+ */
+#define YY_USER_ACTION \
+    yylloc.first_line = yylineno; \
+    yylloc.first_column = column_count; \
+    column_count += yyleng; \
+    yylloc.last_line = yylineno; \
+    yylloc.last_column = column_count - 1;
 
 %}
 
@@ -22,8 +36,9 @@ ID_CHAR  [a-zA-Z0-9_]
 
 %%
 
-[ \t\n]+                { /* 忽略空白 */ }
---.* { /* 忽略注释 */ }
+[ \t]+                  { /* 忽略空白 */ }
+\n+                     { column_count = 1; /* 遇到换行，重置列号 */ }
+--.*                    { column_count = 1; /* 注释到行尾，也重置 */ }
 
 "SELECT"                { return K_SELECT; }
 "FROM"                  { return K_FROM; }

@@ -9,7 +9,10 @@
                 "-g",
                 "${workspaceFolder}/src/main.cpp",
                 "${workspaceFolder}/src/sql/sql_semantic_analyzer.cpp",
-                "${workspaceFolder}/src/sql/symbol_table.cpp",
+                "${workspaceFolder}/src/catalog/symbol_table.cpp",
+                "${workspaceFolder}/src/execution/plan_generator.cpp",
+                "${workspaceFolder}/src/execution/executor.cpp",
+                
                 "-o",
                 "${workspaceFolder}/build/my_program",
                 "-I${workspaceFolder}/include"
@@ -24,4 +27,4 @@
             "problemMatcher": "$gcc"
         }
     ]
-}
+} 
