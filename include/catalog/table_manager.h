@@ -26,6 +26,12 @@ public:
     std::vector<Record> SelectRecords(const std::string& table_name);
     std::vector<Record> SelectRecordsWithCondition(const std::string& table_name, const std::string& condition);
 
+    // 投影操作（Project算子功能）
+    std::vector<Record> SelectColumns(const std::string& table_name, const std::vector<std::string>& column_names);
+    std::vector<Record> SelectColumnsWithCondition(const std::string& table_name,
+                                                  const std::vector<std::string>& column_names,
+                                                  const std::string& condition);
+
     // 更新操作
     bool UpdateRecord(const std::string& table_name, int record_id, const Record& new_record);
     int UpdateRecordsWithCondition(const std::string& table_name, const std::string& condition, const Record& new_record);
@@ -41,7 +47,7 @@ public:
     // 调试信息
     void PrintTableInfo(const std::string& table_name);
     void PrintAllTables();
-    
+
     // 表结构持久化管理
     bool LoadAllTableSchemas();
     bool SaveAllTableSchemas();
@@ -68,4 +74,11 @@ private:
 
     bool WritePageHeader(int page_id, const PageHeader& header);
     bool ReadPageHeader(int page_id, PageHeader& header);
+
+    // 投影辅助方法
+    std::vector<Record> ProjectRecords(const std::vector<Record>& records,
+                                      const std::string& table_name,
+                                      const std::vector<std::string>& column_names);
+    std::vector<int> GetColumnIndices(const std::string& table_name, const std::vector<std::string>& column_names);
+    std::vector<std::string> ValidateColumns(const std::string& table_name, const std::vector<std::string>& column_names);
 };
