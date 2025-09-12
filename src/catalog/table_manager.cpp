@@ -602,3 +602,119 @@ bool TableManager::ReadPageHeader(int page_id, PageHeader &header) {
     return true;
 }
 
+// ========= 投影操作 =========
+std::vector<Record> TableManager::SelectColumns(const std::string& table_name, 
+                                               const std::vector<std::string>& column_names) {
+    std::vector<Record> out;
+    
+    // 验证表是否存在
+    auto it = table_schemas_.find(table_name);
+    if (it == table_schemas_.end()) return out;
+    
+    // 验证列名
+    std::vector<std::string> invalid_columns = ValidateColumns(table_name, column_names);
+    if (!invalid_columns.empty()) return out;
+    
+    // 获取所有记录
+    std::vector<Record> all_records = SelectRecords(table_name);
+    
+    // 执行投影
+    out = ProjectRecords(all_records, table_name, column_names);
+    
+    return out;
+}
+
+std::vector<Record> TableManager::SelectColumnsWithCondition(const std::string& table_name,
+                                                           const std::vector<std::string>& column_names,
+                                                           const std::string& condition) {
+    std::vector<Record> out;
+    
+    // 验证表是否存在
+    auto it = table_schemas_.find(table_name);
+    if (it == table_schemas_.end()) return out;
+    
+    // 验证列名
+    std::vector<std::string> invalid_columns = ValidateColumns(table_name, column_names);
+    if (!invalid_columns.empty()) return out;
+    
+    // 获取过滤后的记录
+    std::vector<Record> filtered_records;
+    if (condition.empty()) {
+        filtered_records = SelectRecords(table_name);
+    } else {
+        filtered_records = SelectRecordsWithCondition(table_name, condition);
+    }
+    
+    // 执行投影
+    out = ProjectRecords(filtered_records, table_name, column_names);
+    
+    return out;
+}
+
+std::vector<Record> TableManager::ProjectRecords(const std::vector<Record>& records,
+                                                const std::string& table_name,
+                                                const std::vector<std::string>& column_names) {
+    std::vector<Record> out;
+    
+    if (column_names.empty()) return out;
+    
+    // 获取列索引映射
+    std::vector<int> column_indices = GetColumnIndices(table_name, column_names);
+    
+    // 对每条记录进行投影
+    for (const Record& record : records) {
+        Record projected_record;
+        projected_record.is_deleted_ = record.is_deleted_;
+        
+        for (int col_idx : column_indices) {
+            if (col_idx >= 0 && col_idx < static_cast<int>(record.values_.size())) {
+                projected_record.AddValue(record.GetValue(col_idx));
+            }
+        }
+        
+        out.push_back(projected_record);
+    }
+    
+    return out;
+}
+
+std::vector<int> TableManager::GetColumnIndices(const std::string& table_name, 
+                                               const std::vector<std::string>& column_names) {
+    std::vector<int> out;
+    
+    TableSchema* schema = GetTableSchema(table_name);
+    if (!schema) return out;
+    
+    for (const std::string& col_name : column_names) {
+        int col_idx = schema->GetColumnIndex(col_name);
+        if (col_idx >= 0) {
+            out.push_back(col_idx);
+        }
+    }
+    
+    return out;
+}
+
+std::vector<std::string> TableManager::ValidateColumns(const std::string& table_name,
+                                                      const std::vector<std::string>& column_names) {
+    std::vector<std::string> out;
+    
+    TableSchema* schema = GetTableSchema(table_name);
+    if (!schema) return column_names;
+    
+    for (const std::string& col_name : column_names) {
+        bool found = false;
+        for (const auto& column : schema->columns_) {
+            if (column.column_name_ == col_name) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            out.push_back(col_name);
+        }
+    }
+    
+    return out;
+}
+

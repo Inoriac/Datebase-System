@@ -57,6 +57,7 @@ enable_testing()
 add_executable(test_db
         tests/test_storage.cpp
         tests/test_table_schema_manager.cpp
+        tests/test_table_manager_projection.cpp
 )
 
 # 2. 链接库
