@@ -1,9 +1,5 @@
 -- 创建一个学生表
-CREATE TABLE students (
-    id INT,
-    name VARCHAR,
-    age INT
-);
+CREATE TABLE students (id INT, name VARCHAR(50), age INT);
 
 -- 插入一些学生数据
 INSERT INTO students (id, name, age) VALUES (1, 'Alice', 20);

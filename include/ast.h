@@ -5,6 +5,13 @@
 #include <vector>
 #include <variant>
 
+struct Location {
+    int first_line = 0;
+    int first_column = 0;
+    int last_line = 0;
+    int last_column = 0;
+};
+
 // 定义你的节点类型
 enum ASTNodeType
 {
@@ -36,7 +43,9 @@ enum ASTNodeType
     GREATER_THAN_OPERATOR = 17,          //> 17
     LESS_THAN_OPERATOR = 18,             //< 18
     GREATER_THAN_OR_EQUAL_OPERATOR = 19, //>= 19
-    LESS_THAN_OR_EQUAL_OPERATOR = 20     //<= 20
+    LESS_THAN_OR_EQUAL_OPERATOR = 20,     //<= 20
+    BINARY_EXPR // 二元表达式,value 为操作符类型，如 '=',左右子节点分别为操作数
+
 };
 
 // 定义类并内联实现方法
@@ -48,11 +57,16 @@ public:
     std::variant<std::string, int, bool> value;
     std::vector<ASTNode *> children;
 
+    Location location;
+
     ASTNode(ASTNodeType node_type, const std::string &node_value)
         : type(node_type), value(node_value) {}
 
     ASTNode(ASTNodeType node_type, const int node_value)
         : type(node_type), value(node_value) {}
+
+    ASTNode(ASTNodeType node_type, const std::string node_value, const Location &loc)
+        : type(node_type), value(node_value), location(loc) {}
 
     ~ASTNode()
     {

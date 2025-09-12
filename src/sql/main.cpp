@@ -6,6 +6,13 @@
 
 #include <iostream>
 
+#include <cstdio>
+
+// Bison/Flex 生成的函数和全局变量的外部声明
+extern int yyparse();
+extern FILE* yyin;
+extern ASTNode* ast_root; // 在.y文件中定义的全局AST根节点
+
 // 声明 mock 数据生成函数
 ASTNode *createMockCreateTableAst();
 ASTNode *createMockInsertAst();
@@ -99,6 +106,25 @@ int main()
 {
     // try
     // {
+        FILE* inputFile = fopen("test.sql", "r");
+        if (!inputFile)
+        {
+            std::cerr << "无法打开输入文件 test.sql" << std::endl;
+            return 1;
+        }
+        yyin = inputFile;
+        if (yyparse() != 0)
+        {
+            std::cerr << "解析错误，无法生成 AST。" << std::endl;
+            fclose(inputFile);
+            return 1;
+        }
+        fclose(inputFile);
+        std::cout << "--- 解析成功，生成 AST。 ---\n";
+        printAST(ast_root,0);
+        semantic_analysis(ast_root);
+        std::cout << "语义分析通过。\n";
+
     //     // 创建一个根节点，用于包含所有语句
     //     ASTNode *root_node = new ASTNode(ROOT_NODE, "");
 
@@ -173,10 +199,10 @@ int main()
     {
         std::cerr << "计划生成失败: " << e.what() << "\n";
     }
-    catch (const std::exception &e)
-    {
-        std::cerr << "发生意外错误: " << e.what() << "\n";
-    }
+    // catch (const std::exception &e)
+    // {
+    //     std::cerr << "发生意外错误: " << e.what() << "\n";
+    // }
 
     return 0;
 }
