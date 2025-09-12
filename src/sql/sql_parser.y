@@ -2,18 +2,29 @@
 %{
 #include <iostream>
 #include <string>
-#include <ast.h>
+#include "ast.h" // 包含 AST 节点定义
 
 // 声明由 Flex 生成的词法分析函数
 extern int yylex(); 
 
-// 声明错误报告函数
-void yyerror(const char *s);
+void yyerror(const char* s); 
+void yyerror(Location* locp, const char* s);
+
+extern int yylineno;
 
 // 存储最终AST的根节点
 ASTNode* ast_root = nullptr;
 
+#define YYLTYPE Location
+
 %}
+
+%code requires {
+    #include "ast.h"
+}
+
+// 启用位置跟踪
+%locations
 
 /* * 定义 yylval 的联合体类型。
  * 语法分析器通过这个联合体从词法分析器接收不同类型的值。
@@ -47,6 +58,7 @@ ASTNode* ast_root = nullptr;
 %type <node> optional_column_list delete_statement
 %type <node> select_list optional_where_clause where_clause expression
 %type <node> comparison_operator literal
+%type <node> data_type optional_varchar_length
 
 // 定义操作符 Token
 %token OP_EQ OP_LT OP_GT OP_LTE OP_GTE OP_NEQ
@@ -71,7 +83,7 @@ program:
 statements:
     statement {
         // 只有一个语句，创建一个列表节点，并把该语句作为子节点
-        $$ = new ASTNode(SQL_STATEMENTS_LIST);
+        $$ = new ASTNode(ROOT_NODE, "", @$);
         $$->addChild($1);
     }
     | statements statement {
@@ -96,9 +108,9 @@ statement:
 create_statement:
     K_CREATE K_TABLE IDENTIFIER '(' column_definitions ')' {
         // 创建一个 CREATE_TABLE_STMT 节点
-        $$ = new ASTNode(CREATE_TABLE_STMT);
+        $$ = new ASTNode(CREATE_TABLE_STMT, "", @3);
         // 子节点1: 表名 (IDENTIFIER)
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3));
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3, @3));
         // 子节点2: 列定义列表
         $$->addChild($5);
 
@@ -108,7 +120,7 @@ create_statement:
 
 column_definitions:
     column_definition {
-        $$ = new ASTNode(COLUMN_DEFINITIONS_LIST);
+        $$ = new ASTNode(COLUMN_DEFINITIONS_LIST, "", @$);
         $$->addChild($1);
     }
     | column_definitions ',' column_definition {
@@ -118,13 +130,29 @@ column_definitions:
     ;
 
 column_definition:
-    IDENTIFIER K_INT {
-        $$ = new ASTNode(IDENTIFIER_NODE, $1);
+    IDENTIFIER data_type {
+        $$ = new ASTNode(IDENTIFIER_NODE, $1, @1);
+        $$->addChild($2);
         free($1);
     }
-    | IDENTIFIER K_VARCHAR '(' INTEGER_CONST ')' {
-        $$ = new ASTNode(IDENTIFIER_NODE, $1);
-        free($1);
+    ;
+
+data_type:
+    K_INT {
+        $$ = new ASTNode(DATA_TYPE_NODE, "INT", @$);
+    }
+    | K_VARCHAR optional_varchar_length {
+        // 将长度信息存储在 data_type 节点的 value 中
+        $$ = new ASTNode(DATA_TYPE_NODE, "VARCHAR", @$);
+        // 如果有长度定义 ($2 不为 nullptr)，可以将其作为子节点
+        $$->addChild($2);
+    }
+    ;
+
+optional_varchar_length:
+    /* empty */ { $$ = nullptr; }
+    | '(' INTEGER_CONST ')' {
+        $$ = new ASTNode(INTEGER_LITERAL_NODE, std::to_string($2), @$);
     }
     ;
 
@@ -134,9 +162,9 @@ column_definition:
  */
 select_statement:
     K_SELECT select_list K_FROM IDENTIFIER optional_where_clause {
-        $$ = new ASTNode(SELECT_STMT);
+        $$ = new ASTNode(SELECT_STMT, "", @$);
         $$->addChild($2);
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $4));
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $4, @4));
         $$->addChild($5);
         free($4);
     }
@@ -144,14 +172,24 @@ select_statement:
 
 select_list:
     '*' { 
-        $$ = new ASTNode(IDENTIFIER_NODE, "*");
+        $$ = new ASTNode(SELECT_LIST, "", @$);
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, "*", @1));
     }
-    | column_list {  $$ = $1; }
+    | column_list { 
+        // 将 column_list 包装在 SELECT_LIST 节点中
+        $$ = new ASTNode(SELECT_LIST, "", @$);
+        // column_list 的子节点是 IDENTIFIER_NODE, 把它们移过来
+        for(auto child : $1->children) {
+            $$->addChild(child);
+        }
+        $1->children.clear(); // 防止双重释放
+        delete $1;
+    }
     ;
 
 column_list:
     column_name {
-        $$ = new ASTNode(COLUMN_LIST);
+        $$ = new ASTNode(COLUMN_LIST, "", @$); 
         $$->addChild($1);
     }
     | column_list ',' column_name {
@@ -162,7 +200,7 @@ column_list:
 
 column_name:
     IDENTIFIER {
-        $$ = new ASTNode(IDENTIFIER_NODE, $1);
+        $$ = new ASTNode(IDENTIFIER_NODE, $1, @1);
         free($1);
     }
     ;
@@ -174,8 +212,8 @@ optional_where_clause:
 
 where_clause:
     K_WHERE expression {
-        // 直接返回表达式子树
-        $$ = $2;
+        $$ = new ASTNode(WHERE_CLAUSE, "", @$);
+        $$->addChild($2); // 将表达式作为 WHERE_CLAUSE 的子节点
     }
 ;
 
@@ -184,13 +222,13 @@ where_clause:
  */
 insert_statement:
     K_INSERT K_INTO IDENTIFIER optional_column_list K_VALUES '(' value_list ')' {
-        $$ = new ASTNode(INSERT_STMT);
+        $$ = new ASTNode(INSERT_STMT, "", @$);
         // 子节点1: 表名
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3));
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3, @3));
         // 子节点2: 可选的列列表 (可能为nullptr)
         $$->addChild($4);
         // 子节点3: 值列表
-        $$->addChild($7);
+        $$->addChild($7);   
         free($3);
     }
     ;
@@ -207,7 +245,7 @@ optional_column_list:
 
 value_list:
     value {
-        $$ = new ASTNode(VALUES_LIST);
+        $$ = new ASTNode(VALUES_LIST, "", @$);
         $$->addChild($1);
     }
     | value_list ',' value {
@@ -224,9 +262,9 @@ value:
  */
 delete_statement:
     K_DELETE K_FROM IDENTIFIER optional_where_clause {
-        $$ = new ASTNode(DELETE_STMT);
+        $$ = new ASTNode(DELETE_STMT, "", @$);
         // 子节点1: 表名
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3));
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3, @3));
         // 子节点2: 可选的 WHERE 子句 (可能为nullptr)
         $$->addChild($4);
         free($3);
@@ -239,63 +277,130 @@ delete_statement:
  */
 expression:
     IDENTIFIER comparison_operator literal {
-        // $2 是 comparison_operator 返回的节点，其value已设为操作符
-        $$ = $2; 
-        // 将列名和字面量作为操作符节点的子节点
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $1));
+        $$ = $2;
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $1, @1));
         $$->addChild($3);
         free($1);
     }
     ;
 
 comparison_operator:
-    OP_EQ  { $$ = new ASTNode(EXPRESSION_NODE, "=");  }
-    | OP_NEQ { $$ = new ASTNode(EXPRESSION_NODE, "!="); }
-    | OP_GT  { $$ = new ASTNode(EXPRESSION_NODE, ">");  }
-    | OP_GTE  { $$ = new ASTNode(EXPRESSION_NODE, ">="); }
-    | OP_LT  { $$ = new ASTNode(EXPRESSION_NODE, "<");  }TT
-    | OP_LTE  { $$ = new ASTNode(EXPRESSION_NODE, "<="); }
+    OP_EQ  { $$ = new ASTNode(BINARY_EXPR, "=", @1);  }
+    | OP_NEQ { $$ = new ASTNode(BINARY_EXPR, "!=", @1); }
+    | OP_GT  { $$ = new ASTNode(BINARY_EXPR, ">", @1);  }
+    | OP_GTE  { $$ = new ASTNode(BINARY_EXPR, ">=", @1); }
+    | OP_LT  { $$ = new ASTNode(BINARY_EXPR, "<", @1);  }
+    | OP_LTE  { $$ = new ASTNode(BINARY_EXPR, "<=", @1); }
     ;
 
 literal:
     INTEGER_CONST {
-        $$ = new ASTNode(INTEGER_LITERAL_NODE, std::to_string($1));
+        $$ = new ASTNode(INTEGER_LITERAL_NODE, std::to_string($1), @1);
     }
     | STRING_CONST {
-        $$ = new ASTNode(STRING_LITERAL_NODE, $1);
+        $$ = new ASTNode(STRING_LITERAL_NODE, $1, @1);
         free($1);
     }
     ;
 
 %%
 /* C++ 代码部分 */
-// 当语法分析器遇到无法匹配的语法时，会调用此函数
-void yyerror(const char *s) {
-    // yylineno 是 Flex 提供的全局变量，用于追踪当前行号
-    extern int yylineno;
-    std::cerr << "[Parser] Syntax Error at line " << yylineno << ": " << s << std::endl;
+/* 错误处理函数现在可以打印精确的位置 */
+void yyerror(YYLTYPE* locp, const char* s) {
+    std::cerr << "[Parser] Error at line " << locp->first_line 
+              << ", column " << locp->first_column 
+              << ": " << s << std::endl;
 }
 
-// 主函数 (用于独立测试)
-/* int main(int argc, char **argv) {
-    // 设置 Flex 从文件读取输入
-    extern FILE *yyin;
-    if (argc > 1) {
-        yyin = fopen(argv[1], "r");
-        if (!yyin) {
-            perror(argv[1]);
-            return 1;
-        }
+// 需要一个不带位置的 yyerror 版本以兼容 Flex
+void yyerror(const char* s) {
+    yyerror(&yylloc, s);
+}
+
+// 定义缓冲区状态的类型
+typedef struct yy_buffer_state* YY_BUFFER_STATE;
+// 从一个空结尾的字符串创建扫描缓冲区
+extern YY_BUFFER_STATE yy_scan_string(const char* str);
+// 删除扫描缓冲区，释放内存
+extern void yy_delete_buffer(YY_BUFFER_STATE buffer);
+
+ASTNode* parse_sql_string(const std::string& sql) {
+    // 1. 调用 Flex 的函数，为给定的字符串创建一个新的扫描缓冲区
+    YY_BUFFER_STATE buffer = yy_scan_string(sql.c_str());
+
+    // 2. 调用 Bison 的解析器。它会自动使用上面创建的缓冲区。
+    int result = yyparse();
+    
+    // 3. 清理/删除 Flex 创建的缓冲区
+    yy_delete_buffer(buffer);
+
+    // 4. 如果解析成功，返回 AST 根节点，否则返回 nullptr
+    if (result == 0) {
+        return ast_root;
     }
     
-    // 调用 Bison 生成的解析函数
-    // yyparse() 会在内部循环调用 yylex() 直到文件末尾
-    // 返回 0 表示成功，非 0 表示有语法错误
-    if (yyparse() == 0) {
-        std::cout << "Parsing completed successfully." << std::endl;
-    } else {
-        std::cout << "Parsing failed due to syntax errors." << std::endl;
+    // 解析失败，ast_root 可能状态不确定，确保返回 nullptr
+    // 并且如果 ast_root 已被部分创建，需要清理
+    if (ast_root) {
+        delete ast_root;
+        ast_root = nullptr;
+    }
+    return nullptr;
+}
+
+// 简单的 AST 打印函数，用于演示
+/* void print_ast(ASTNode* node, int indent = 0) {
+    if (!node) return;
+    for (int i = 0; i < indent; ++i) std::cout << "  ";
+    std::cout << "Type: " << node->type;
+    if (!node->value.empty()) {
+        std::cout << ", Value: '" << node->value << "'";
+    }
+    std::cout << std::endl;
+    for (ASTNode* child : node->children) {
+        print_ast(child, indent + 1);
+    }
+} */
+
+// 主函数 (用于独立测试)
+/* int main() {
+    std::string sql_query;
+    std::cout << "Enter SQL statements. Type 'exit' or 'quit' to leave." << std::endl;
+
+    while (true) {
+        std::cout << "SQL> ";
+        std::getline(std::cin, sql_query);
+
+        if (sql_query == "exit" || sql_query == "quit") {
+            break;
+        }
+
+        if (sql_query.empty()) {
+            continue;
+        }
+
+        // 调用我们封装的解析函数
+        ASTNode* root = parse_sql_string(sql_query);
+
+        if (root) {
+            std::cout << "------------------------------------------" << std::endl;
+            std::cout << "Parsing successful! AST Structure:" << std::endl;
+            print_ast(root); // 打印 AST 树进行验证
+            std::cout << "------------------------------------------" << std::endl;
+            
+            // 在这里，您可以将 root 交给语义分析器
+            // semantic_analyzer.analyze(root);
+
+            // 清理内存
+            delete root;
+            ast_root = nullptr; // 重置全局指针
+        } else {
+            std::cerr << "------------------------------------------" << std::endl;
+            std::cerr << "Parsing failed." << std::endl;
+            std::cerr << "------------------------------------------" << std::endl;
+        }
     }
 
+    std::cout << "Goodbye!" << std::endl;
     return 0;
 } */
