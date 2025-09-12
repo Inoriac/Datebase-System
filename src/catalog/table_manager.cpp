@@ -177,12 +177,16 @@ TableManager::TableManager(BufferPoolManager *bpm): buffer_pool_manager_(bpm) {
     schema_manager_ = new TableSchemaManager(bpm, this);
     
     // 延迟加载所有表结构到内存，避免循环依赖
-    // LoadAllTableSchemas(); // 暂时注释掉，在第一次使用时加载
+    // 加载根目录（页0）并恢复表首页映射，再加载所有表结构
+    LoadRootDirectory();
+    LoadAllTableSchemas();
 }
 
 TableManager::~TableManager() {
     // 保存所有表结构到磁盘
     SaveAllTableSchemas();
+    // 保存根目录
+    SaveRootDirectory();
     
     // 删除表结构管理器
     delete schema_manager_;
@@ -228,6 +232,8 @@ bool TableManager::CreateTable(const TableSchema &schema) {
         return false;
     }
 
+    // 更新根目录：记录表的第一页
+    SaveRootDirectory();
     return true;
 }
 
@@ -243,7 +249,68 @@ bool TableManager::DropTable(const std::string& table_name) {
     
     // 从持久化存储中删除表结构
     schema_manager_->DeleteTableSchema(table_name);
+    // 更新根目录
+    SaveRootDirectory();
     
+    return true;
+}
+
+// ========== 根目录持久化（页0）：表名长度+表名+第一页id，顺序存储 ==========
+bool TableManager::LoadRootDirectory() {
+    // 页0如不存在则视为空
+    Page* page0 = buffer_pool_manager_->FetchPage(0);
+    if (page0 == nullptr) {
+        return true;
+    }
+    const char* data = page0->GetData();
+    int offset = 0;
+    table_pages.clear();
+    while (offset + 8 <= PAGE_SIZE) {
+        int name_len;
+        std::memcpy(&name_len, data + offset, sizeof(int));
+        if (name_len <= 0 || name_len > PAGE_SIZE - offset - 8) break;
+        offset += 4;
+        if (offset + name_len + 4 > PAGE_SIZE) break;
+        std::string name(data + offset, name_len);
+        offset += name_len;
+        int first_page;
+        std::memcpy(&first_page, data + offset, sizeof(int));
+        offset += 4;
+        if (first_page > 0) {
+            table_pages[name] = std::vector<int>{ first_page };
+        }
+    }
+    buffer_pool_manager_->UnpinPage(0);
+    return true;
+}
+
+bool TableManager::SaveRootDirectory() {
+    // 确保页0存在
+    Page* page0 = buffer_pool_manager_->FetchPage(0);
+    if (page0 == nullptr) {
+        int pid;
+        page0 = buffer_pool_manager_->NewPage(&pid);
+        if (page0 == nullptr || pid != 0) {
+            // 若无法分配到页0（例如已有文件排布），则放弃根页写入
+            if (page0) buffer_pool_manager_->UnpinPage(pid);
+            return false;
+        }
+    }
+    char* data = page0->GetData();
+    std::memset(data, 0, PAGE_SIZE);
+    int offset = 0;
+    for (const auto& kv : table_pages) {
+        const std::string& name = kv.first;
+        int first_page = kv.second.empty() ? -1 : kv.second.front();
+        int name_len = static_cast<int>(name.size());
+        if (name_len <= 0) continue;
+        if (offset + 4 + name_len + 4 > PAGE_SIZE) break;
+        std::memcpy(data + offset, &name_len, sizeof(int)); offset += 4;
+        std::memcpy(data + offset, name.data(), name_len); offset += name_len;
+        std::memcpy(data + offset, &first_page, sizeof(int)); offset += 4;
+    }
+    page0->SetDirty(true);
+    buffer_pool_manager_->UnpinPage(0);
     return true;
 }
 
@@ -466,6 +533,50 @@ int TableManager::UpdateRecordsWithCondition(const std::string &table_name, cons
     }
     return updated;
 }
+
+int TableManager::DeleteRecordsWithCondition(const std::string &table_name, const std::string &condition) {
+    auto it = table_schemas_.find(table_name);
+    if (it == table_schemas_.end()) return 0;
+    const TableSchema &schema = it->second;
+
+    std::string cond = TrimSpaces(condition);
+    bool delete_all = cond.empty();
+
+    std::string col; CmpOp op; std::string lit; bool is_str=false, is_b=false; int iv=0; bool bv=false;
+    int col_idx = -1; DataType col_type = DataType::Int;
+    if (!delete_all) {
+        if (!ParseCondition(cond, col, op, lit, is_str, is_b, iv, bv)) return 0;
+        col_idx = FindColumnIndexByName(schema, col);
+        if (col_idx < 0) return 0;
+        col_type = schema.columns_[static_cast<size_t>(col_idx)].type_;
+    }
+
+    const int record_size = RecordSerializer::CalculateRecordSize(schema);
+    int deleted = 0;
+    for (int page_id : table_pages[table_name]) {
+        Header header;
+        if (!ReadPageHeader(page_id, header)) continue;
+        for (int i = 0; i < header.record_count; i++) {
+            int offset = Header::HEADER_SIZE + i * record_size;
+            Record rec;
+            if (!ReadRecordFromPage(page_id, offset, rec, schema)) continue;
+            if (rec.is_deleted_) continue;
+
+            bool matched = delete_all;
+            if (!delete_all) {
+                if (static_cast<size_t>(col_idx) < rec.values_.size()) {
+                    const Value &v = rec.values_[static_cast<size_t>(col_idx)];
+                    matched = CompareValues(v, col_type, op, lit, is_str, is_b, iv, bv);
+                }
+            }
+            if (matched) {
+                rec.is_deleted_ = true;
+                if (WriteRecordToPage(page_id, offset, rec, schema)) deleted++;
+            }
+        }
+    }
+    return deleted;
+}
 // ========= 页管理 ===========
 int TableManager::AllocatePageForTable(const std::string &table_name) {
     if (!table_schemas_.count(table_name)) return -1;
@@ -533,6 +644,13 @@ void TableManager::PrintAllTables() {
     for (auto& [name, _] : table_schemas_) {
         PrintTableInfo(name);
     }
+}
+
+std::vector<std::string> TableManager::ListTableNames() const {
+    std::vector<std::string> names;
+    names.reserve(table_schemas_.size());
+    for (const auto& kv : table_schemas_) names.push_back(kv.first);
+    return names;
 }
 
 // ========= 记录存取 ===========

@@ -36,6 +36,9 @@ public:
     bool UpdateRecord(const std::string& table_name, int record_id, const Record& new_record);
     int UpdateRecordsWithCondition(const std::string& table_name, const std::string& condition, const Record& new_record);
 
+    // 删除操作（按条件批量删除，设置 is_deleted_ 标记）
+    int DeleteRecordsWithCondition(const std::string& table_name, const std::string& condition);
+
     // 页管理
     int AllocatePageForTable(const std::string& table_name);
     bool DeallocatePageForTable(const std::string& table_name, int page_id);
@@ -47,6 +50,8 @@ public:
     // 调试信息
     void PrintTableInfo(const std::string& table_name);
     void PrintAllTables();
+    // 列出当前已加载的表名
+    std::vector<std::string> ListTableNames() const;
     
     // 表结构持久化管理
     bool LoadAllTableSchemas();
@@ -81,4 +86,8 @@ private:
                                       const std::vector<std::string>& column_names);
     std::vector<int> GetColumnIndices(const std::string& table_name, const std::vector<std::string>& column_names);
     std::vector<std::string> ValidateColumns(const std::string& table_name, const std::vector<std::string>& column_names);
+
+    // 根目录页的读写（页0，持久化表->第一页ID映射）
+    bool LoadRootDirectory();
+    bool SaveRootDirectory();
 };
