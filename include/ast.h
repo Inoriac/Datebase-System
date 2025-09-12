@@ -35,6 +35,9 @@ enum ASTNodeType
     COLUMN_LIST,                // 新增: 独立的列名列表节点
     VALUES_LIST,
     SELECT_LIST,  // 新增
+
+    FROM_CLAUSE,
+    GREATER_THAN_OR_EQUAL_OPERATOR,
     
     WHERE_CLAUSE, // 新增
     EQUAL_OPERATOR, // 新增

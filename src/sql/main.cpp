@@ -1,8 +1,8 @@
-#include "ast.h"
-#include "symbol_table.h"
-#include "sql_semantic_analyzer.h" // 假设这是你的语义分析函数声明文件
-#include "plan_generator.h"        // 执行计划生成器
-#include "executor.h"              // 执行器
+#include "../../include/ast.h"
+#include "../../include/symbol_table.h"
+#include "../../include/sql_semantic_analyzer.h" // 假设这是你的语义分析函数声明文件
+#include "../../include/plan_generator.h"        // 执行计划生成器
+#include "../../include/executor.h"              // 执行器
 
 #include <iostream>
 
@@ -104,8 +104,7 @@ void printAST(ASTNode *node, int depth = 0)
 }
 int main()
 {
-    try
-    {
+    try {
         FILE* inputFile = fopen("test.sql", "r");
         if (!inputFile)
         {
@@ -128,38 +127,42 @@ int main()
         // 创建一个根节点，用于包含所有语句
         ASTNode *root_node = new ASTNode(ROOT_NODE, "");
 
-    //     // 1. 添加 CREATE TABLE 语句
-    //     ASTNode *createAst = createMockCreateTableAst();
-    //     root_node->addChild(createAst);
+        //     // 1. 添加 CREATE TABLE 语句
+        //     ASTNode *createAst = createMockCreateTableAst();
+        //     root_node->addChild(createAst);
 
-    //     // 2. 添加 INSERT INTO 语句
-    //     ASTNode *insertAst = createMockInsertAst();
-    //     root_node->addChild(insertAst);
+        //     // 2. 添加 INSERT INTO 语句
+        //     ASTNode *insertAst = createMockInsertAst();
+        //     root_node->addChild(insertAst);
 
-    //     // 3. 添加 SELECT 语句
-    //     ASTNode *selectAst = createMockSelectAst();
-    //     root_node->addChild(selectAst);
+        //     // 3. 添加 SELECT 语句
+        //     ASTNode *selectAst = createMockSelectAst();
+        //     root_node->addChild(selectAst);
 
-    //     // 4. 添加 DELETE 语句
-    //     ASTNode *deleteAst = createMockDeleteAst();
-    //     root_node->addChild(deleteAst);
+        //     // 4. 添加 DELETE 语句
+        //     ASTNode *deleteAst = createMockDeleteAst();
+        //     root_node->addChild(deleteAst);
 
-    //     std::cout << "--- 正在对所有语句进行语义分析 ---\n";
-    //     printAST(root_node, 0);
+        //     std::cout << "--- 正在对所有语句进行语义分析 ---\n";
+        //     printAST(root_node, 0);
 
-    //     semantic_analysis(root_node);
-    //     // std::cout << "所有语句语义分析通过。\n";
+        //     semantic_analysis(root_node);
+        //     // std::cout << "所有语句语义分析通过。\n";
 
-    //     // 在程序结束时清理内存
-    //     // delete root_node 会自动删除所有子节点，无需单独删除
-    //     free_ast(root_node);
-    // }
-    // catch (const std::exception &e)
-    // {
-    //     std::cerr << "语义分析失败: " << e.what() << std::endl;
-    // }
-    // return 0;
-
+        //     // 在程序结束时清理内存
+        //     // delete root_node 会自动删除所有子节点，无需单独删除
+        //     free_ast(root_node);
+        // }
+        // catch (const std::exception &e)
+        // {
+        //     std::cerr << "语义分析失败: " << e.what() << std::endl;
+        // }
+        // return 0;
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "发生意外错误: " << e.what() << "\n";
+    }
     PlanGenerator plan_gen;
 
     try
@@ -199,10 +202,7 @@ int main()
     {
         std::cerr << "计划生成失败: " << e.what() << "\n";
     }
-    catch (const std::exception &e)
-    {
-        std::cerr << "发生意外错误: " << e.what() << "\n";
-    }
+
 
     return 0;
 }
