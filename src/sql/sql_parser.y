@@ -7,17 +7,24 @@
 // 声明由 Flex 生成的词法分析函数
 extern int yylex(); 
 
-// 声明错误报告函数
-void yyerror(const char *s);
+void yyerror(const char* s); 
+void yyerror(Location* locp, const char* s);
+
+extern int yylineno;
 
 // 存储最终AST的根节点
 ASTNode* ast_root = nullptr;
+
+#define YYLTYPE Location
 
 %}
 
 %code requires {
     #include "ast.h"
 }
+
+// 启用位置跟踪
+%locations
 
 /* * 定义 yylval 的联合体类型。
  * 语法分析器通过这个联合体从词法分析器接收不同类型的值。
@@ -76,7 +83,7 @@ program:
 statements:
     statement {
         // 只有一个语句，创建一个列表节点，并把该语句作为子节点
-        $$ = new ASTNode(ROOT_NODE, "");
+        $$ = new ASTNode(ROOT_NODE, "", @$);
         $$->addChild($1);
     }
     | statements statement {
@@ -101,9 +108,9 @@ statement:
 create_statement:
     K_CREATE K_TABLE IDENTIFIER '(' column_definitions ')' {
         // 创建一个 CREATE_TABLE_STMT 节点
-        $$ = new ASTNode(CREATE_TABLE_STMT, "");
+        $$ = new ASTNode(CREATE_TABLE_STMT, "", @3);
         // 子节点1: 表名 (IDENTIFIER)
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3));
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3, @3));
         // 子节点2: 列定义列表
         $$->addChild($5);
 
@@ -113,7 +120,7 @@ create_statement:
 
 column_definitions:
     column_definition {
-        $$ = new ASTNode(COLUMN_DEFINITIONS_LIST, "");
+        $$ = new ASTNode(COLUMN_DEFINITIONS_LIST, "", @$);
         $$->addChild($1);
     }
     | column_definitions ',' column_definition {
@@ -124,7 +131,7 @@ column_definitions:
 
 column_definition:
     IDENTIFIER data_type {
-        $$ = new ASTNode(IDENTIFIER_NODE, $1);
+        $$ = new ASTNode(IDENTIFIER_NODE, $1, @1);
         $$->addChild($2);
         free($1);
     }
@@ -132,11 +139,11 @@ column_definition:
 
 data_type:
     K_INT {
-        $$ = new ASTNode(DATA_TYPE_NODE, "INT");
+        $$ = new ASTNode(DATA_TYPE_NODE, "INT", @$);
     }
     | K_VARCHAR optional_varchar_length {
         // 将长度信息存储在 data_type 节点的 value 中
-        $$ = new ASTNode(DATA_TYPE_NODE, "VARCHAR");
+        $$ = new ASTNode(DATA_TYPE_NODE, "VARCHAR", @$);
         // 如果有长度定义 ($2 不为 nullptr)，可以将其作为子节点
         $$->addChild($2);
     }
@@ -145,7 +152,7 @@ data_type:
 optional_varchar_length:
     /* empty */ { $$ = nullptr; }
     | '(' INTEGER_CONST ')' {
-        $$ = new ASTNode(INTEGER_LITERAL_NODE, std::to_string($2));
+        $$ = new ASTNode(INTEGER_LITERAL_NODE, std::to_string($2), @$);
     }
     ;
 
@@ -155,9 +162,9 @@ optional_varchar_length:
  */
 select_statement:
     K_SELECT select_list K_FROM IDENTIFIER optional_where_clause {
-        $$ = new ASTNode(SELECT_STMT, "");
+        $$ = new ASTNode(SELECT_STMT, "", @$);
         $$->addChild($2);
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $4));
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $4, @4));
         $$->addChild($5);
         free($4);
     }
@@ -165,12 +172,12 @@ select_statement:
 
 select_list:
     '*' { 
-        $$ = new ASTNode(SELECT_LIST, "");
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, "*"));
+        $$ = new ASTNode(SELECT_LIST, "", @$);
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, "*", @1));
     }
     | column_list { 
         // 将 column_list 包装在 SELECT_LIST 节点中
-        $$ = new ASTNode(SELECT_LIST, "");
+        $$ = new ASTNode(SELECT_LIST, "", @$);
         // column_list 的子节点是 IDENTIFIER_NODE, 把它们移过来
         for(auto child : $1->children) {
             $$->addChild(child);
@@ -182,7 +189,7 @@ select_list:
 
 column_list:
     column_name {
-        $$ = new ASTNode(COLUMN_LIST, ""); 
+        $$ = new ASTNode(COLUMN_LIST, "", @$); 
         $$->addChild($1);
     }
     | column_list ',' column_name {
@@ -193,7 +200,7 @@ column_list:
 
 column_name:
     IDENTIFIER {
-        $$ = new ASTNode(IDENTIFIER_NODE, $1);
+        $$ = new ASTNode(IDENTIFIER_NODE, $1, @1);
         free($1);
     }
     ;
@@ -205,7 +212,7 @@ optional_where_clause:
 
 where_clause:
     K_WHERE expression {
-        $$ = new ASTNode(WHERE_CLAUSE, "");
+        $$ = new ASTNode(WHERE_CLAUSE, "", @$);
         $$->addChild($2); // 将表达式作为 WHERE_CLAUSE 的子节点
     }
 ;
@@ -215,9 +222,9 @@ where_clause:
  */
 insert_statement:
     K_INSERT K_INTO IDENTIFIER optional_column_list K_VALUES '(' value_list ')' {
-        $$ = new ASTNode(INSERT_STMT, "");
+        $$ = new ASTNode(INSERT_STMT, "", @$);
         // 子节点1: 表名
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3));
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3, @3));
         // 子节点2: 可选的列列表 (可能为nullptr)
         $$->addChild($4);
         // 子节点3: 值列表
@@ -238,7 +245,7 @@ optional_column_list:
 
 value_list:
     value {
-        $$ = new ASTNode(VALUES_LIST, "");
+        $$ = new ASTNode(VALUES_LIST, "", @$);
         $$->addChild($1);
     }
     | value_list ',' value {
@@ -255,9 +262,9 @@ value:
  */
 delete_statement:
     K_DELETE K_FROM IDENTIFIER optional_where_clause {
-        $$ = new ASTNode(DELETE_STMT, "");
+        $$ = new ASTNode(DELETE_STMT, "", @$);
         // 子节点1: 表名
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3));
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3, @3));
         // 子节点2: 可选的 WHERE 子句 (可能为nullptr)
         $$->addChild($4);
         free($3);
@@ -271,38 +278,43 @@ delete_statement:
 expression:
     IDENTIFIER comparison_operator literal {
         $$ = $2;
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $1));
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $1, @1));
         $$->addChild($3);
         free($1);
     }
     ;
 
 comparison_operator:
-    OP_EQ  { $$ = new ASTNode(BINARY_EXPR, "=");  }
-    | OP_NEQ { $$ = new ASTNode(BINARY_EXPR, "!="); }
-    | OP_GT  { $$ = new ASTNode(BINARY_EXPR, ">");  }
-    | OP_GTE  { $$ = new ASTNode(BINARY_EXPR, ">="); }
-    | OP_LT  { $$ = new ASTNode(BINARY_EXPR, "<");  }
-    | OP_LTE  { $$ = new ASTNode(BINARY_EXPR, "<="); }
+    OP_EQ  { $$ = new ASTNode(BINARY_EXPR, "=", @1);  }
+    | OP_NEQ { $$ = new ASTNode(BINARY_EXPR, "!=", @1); }
+    | OP_GT  { $$ = new ASTNode(BINARY_EXPR, ">", @1);  }
+    | OP_GTE  { $$ = new ASTNode(BINARY_EXPR, ">=", @1); }
+    | OP_LT  { $$ = new ASTNode(BINARY_EXPR, "<", @1);  }
+    | OP_LTE  { $$ = new ASTNode(BINARY_EXPR, "<=", @1); }
     ;
 
 literal:
     INTEGER_CONST {
-        $$ = new ASTNode(INTEGER_LITERAL_NODE, std::to_string($1));
+        $$ = new ASTNode(INTEGER_LITERAL_NODE, std::to_string($1), @1);
     }
     | STRING_CONST {
-        $$ = new ASTNode(STRING_LITERAL_NODE, $1);
+        $$ = new ASTNode(STRING_LITERAL_NODE, $1, @1);
         free($1);
     }
     ;
 
 %%
 /* C++ 代码部分 */
-// 当语法分析器遇到无法匹配的语法时，会调用此函数
-void yyerror(const char *s) {
-    // yylineno 是 Flex 提供的全局变量，用于追踪当前行号
-    extern int yylineno;
-    std::cerr << "[Parser] Syntax Error at line " << yylineno << ": " << s << std::endl;
+/* 错误处理函数现在可以打印精确的位置 */
+void yyerror(YYLTYPE* locp, const char* s) {
+    std::cerr << "[Parser] Error at line " << locp->first_line 
+              << ", column " << locp->first_column 
+              << ": " << s << std::endl;
+}
+
+// 需要一个不带位置的 yyerror 版本以兼容 Flex
+void yyerror(const char* s) {
+    yyerror(&yylloc, s);
 }
 
 // 定义缓冲区状态的类型
