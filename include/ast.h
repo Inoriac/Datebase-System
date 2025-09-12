@@ -8,29 +8,35 @@
 // 定义你的节点类型
 enum ASTNodeType
 {
-    ROOT_NODE,
+    ROOT_NODE = 0,
 
     // 语句类型
-    CREATE_TABLE_STMT,
-    INSERT_STMT,
-    SELECT_STMT,
-    DELETE_STMT,              // 新增: DELETE语句节点
+    CREATE_TABLE_STMT = 1,
+    INSERT_STMT = 2,
+    SELECT_STMT = 3,
+    DELETE_STMT = 4,
 
-    EXPRESSION_NODE,            // 新增: 通用表达式节点 (用于WHERE)
-    
-    IDENTIFIER_NODE,
-    DATA_TYPE_NODE,
-    INTEGER_LITERAL_NODE,
-    STRING_LITERAL_NODE,
-    
+    EXPRESSION_NODE = 5,
+
+    IDENTIFIER_NODE = 6,
+    DATA_TYPE_NODE = 7,
+    INTEGER_LITERAL_NODE = 8,
+    STRING_LITERAL_NODE = 9,
+
     // 复合节点类型
-    COLUMN_DEFINITIONS_LIST,
-    COLUMN_LIST,                // 新增: 独立的列名列表节点
-    VALUES_LIST,
-    SELECT_LIST,  // 新增
+    COLUMN_DEFINITIONS_LIST = 10,
+    COLUMN_LIST = 11,
+    VALUES_LIST = 12,
+    SELECT_LIST = 13,
+
+    WHERE_CLAUSE = 14,                   // where 14
+    FROM_CLAUSE = 15,                    // from 15
     
-    WHERE_CLAUSE, // 新增
-    EQUAL_OPERATOR // 新增
+    EQUAL_OPERATOR = 16,                 //= 16
+    GREATER_THAN_OPERATOR = 17,          //> 17
+    LESS_THAN_OPERATOR = 18,             //< 18
+    GREATER_THAN_OR_EQUAL_OPERATOR = 19, //>= 19
+    LESS_THAN_OR_EQUAL_OPERATOR = 20     //<= 20
 };
 
 // 定义类并内联实现方法
