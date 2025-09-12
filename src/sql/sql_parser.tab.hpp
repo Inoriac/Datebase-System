@@ -35,8 +35,8 @@
    especially those whose name start with YY_ or yy_.  They are
    private implementation details that can be changed or removed.  */
 
-#ifndef YY_YY_SQL_PARSER_TAB_HPP_INCLUDED
-# define YY_YY_SQL_PARSER_TAB_HPP_INCLUDED
+#ifndef YY_YY_HOME_CAO_DESKTOP_DATABASE_SYS_DATEBASE_SYSTEM_SRC_SQL_SQL_PARSER_TAB_HPP_INCLUDED
+# define YY_YY_HOME_CAO_DESKTOP_DATABASE_SYS_DATEBASE_SYSTEM_SRC_SQL_SQL_PARSER_TAB_HPP_INCLUDED
 /* Debug traces.  */
 #ifndef YYDEBUG
 # define YYDEBUG 0
@@ -45,11 +45,11 @@
 extern int yydebug;
 #endif
 /* "%code requires" blocks.  */
-#line 18 "sql_parser.y"
+#line 22 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
 
     #include "ast.h"
 
-#line 53 "sql_parser.tab.hpp"
+#line 53 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.hpp"
 
 /* Token kinds.  */
 #ifndef YYTOKENTYPE
@@ -88,13 +88,13 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 25 "sql_parser.y"
+#line 32 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
 
     int int_val;
     char* str_val;
     ASTNode* node; 
 
-#line 98 "sql_parser.tab.hpp"
+#line 98 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;
@@ -102,11 +102,25 @@ typedef union YYSTYPE YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 #endif
 
+/* Location type.  */
+#if ! defined YYLTYPE && ! defined YYLTYPE_IS_DECLARED
+typedef struct YYLTYPE YYLTYPE;
+struct YYLTYPE
+{
+  int first_line;
+  int first_column;
+  int last_line;
+  int last_column;
+};
+# define YYLTYPE_IS_DECLARED 1
+# define YYLTYPE_IS_TRIVIAL 1
+#endif
+
 
 extern YYSTYPE yylval;
-
+extern YYLTYPE yylloc;
 
 int yyparse (void);
 
 
-#endif /* !YY_YY_SQL_PARSER_TAB_HPP_INCLUDED  */
+#endif /* !YY_YY_HOME_CAO_DESKTOP_DATABASE_SYS_DATEBASE_SYSTEM_SRC_SQL_SQL_PARSER_TAB_HPP_INCLUDED  */
