@@ -67,7 +67,7 @@
 
 
 /* First part of user prologue.  */
-#line 2 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 2 "sql_parser.y"
 
 #include <iostream>
 #include <string>
@@ -87,7 +87,7 @@ ASTNode* ast_root = nullptr;
 #define YYLTYPE Location
 
 
-#line 91 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 91 "sql_parser.tab.cpp"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -1284,68 +1284,68 @@ yyreduce:
   switch (yyn)
     {
   case 2: /* program: statements  */
-#line 75 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 75 "sql_parser.y"
                {
         // 当整个程序解析完成，$1是sql_statements返回的根节点
         // 将它赋值给全局变量 ast_root
         ast_root = (yyvsp[0].node);
         std::cout << "[Parser] SQL parsing complete. AST root is set." << std::endl;
     }
-#line 1295 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1295 "sql_parser.tab.cpp"
     break;
 
   case 3: /* statements: statement  */
-#line 84 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 84 "sql_parser.y"
               {
         // 只有一个语句，创建一个列表节点，并把该语句作为子节点
         (yyval.node) = new ASTNode(ROOT_NODE, "", (yyloc));
         (yyval.node)->addChild((yyvsp[0].node));
     }
-#line 1305 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1305 "sql_parser.tab.cpp"
     break;
 
   case 4: /* statements: statements statement  */
-#line 89 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 89 "sql_parser.y"
                            {
         // 已经有一个列表了($1)，把新的语句($2)加进去
         (yyvsp[-1].node)->addChild((yyvsp[0].node));
         (yyval.node) = (yyvsp[-1].node); // 将更新后的列表向上传递
     }
-#line 1315 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1315 "sql_parser.tab.cpp"
     break;
 
   case 5: /* statement: create_statement ';'  */
-#line 98 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 98 "sql_parser.y"
                          { (yyval.node) = (yyvsp[-1].node); }
-#line 1321 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1321 "sql_parser.tab.cpp"
     break;
 
   case 6: /* statement: insert_statement ';'  */
-#line 99 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 99 "sql_parser.y"
                            { (yyval.node) = (yyvsp[-1].node); }
-#line 1327 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1327 "sql_parser.tab.cpp"
     break;
 
   case 7: /* statement: select_statement ';'  */
-#line 100 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 100 "sql_parser.y"
                            { (yyval.node) = (yyvsp[-1].node); }
-#line 1333 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1333 "sql_parser.tab.cpp"
     break;
 
   case 8: /* statement: delete_statement ';'  */
-#line 101 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 101 "sql_parser.y"
                            { (yyval.node) = (yyvsp[-1].node); }
-#line 1339 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1339 "sql_parser.tab.cpp"
     break;
 
   case 9: /* statement: error ';'  */
-#line 102 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 102 "sql_parser.y"
                 { yyerrok; }
-#line 1345 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1345 "sql_parser.tab.cpp"
     break;
 
   case 10: /* create_statement: K_CREATE K_TABLE IDENTIFIER '(' column_definitions ')'  */
-#line 109 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 109 "sql_parser.y"
                                                            {
         // 创建一个 CREATE_TABLE_STMT 节点
         (yyval.node) = new ASTNode(CREATE_TABLE_STMT, "", (yylsp[-3]));
@@ -1356,72 +1356,72 @@ yyreduce:
 
         free((yyvsp[-3].str_val)); // 释放由词法分析器中 strdup 分配的内存
     }
-#line 1360 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1360 "sql_parser.tab.cpp"
     break;
 
   case 11: /* column_definitions: column_definition  */
-#line 122 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 122 "sql_parser.y"
                       {
         (yyval.node) = new ASTNode(COLUMN_DEFINITIONS_LIST, "", (yyloc));
         (yyval.node)->addChild((yyvsp[0].node));
     }
-#line 1369 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1369 "sql_parser.tab.cpp"
     break;
 
   case 12: /* column_definitions: column_definitions ',' column_definition  */
-#line 126 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 126 "sql_parser.y"
                                                {
         (yyvsp[-2].node)->addChild((yyvsp[0].node));
         (yyval.node) = (yyvsp[-2].node);
     }
-#line 1378 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1378 "sql_parser.tab.cpp"
     break;
 
   case 13: /* column_definition: IDENTIFIER data_type  */
-#line 133 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 133 "sql_parser.y"
                          {
         (yyval.node) = new ASTNode(IDENTIFIER_NODE, (yyvsp[-1].str_val), (yylsp[-1]));
         (yyval.node)->addChild((yyvsp[0].node));
         free((yyvsp[-1].str_val));
     }
-#line 1388 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1388 "sql_parser.tab.cpp"
     break;
 
   case 14: /* data_type: K_INT  */
-#line 141 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 141 "sql_parser.y"
           {
         (yyval.node) = new ASTNode(DATA_TYPE_NODE, "INT", (yyloc));
     }
-#line 1396 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1396 "sql_parser.tab.cpp"
     break;
 
   case 15: /* data_type: K_VARCHAR optional_varchar_length  */
-#line 144 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 144 "sql_parser.y"
                                         {
         // 将长度信息存储在 data_type 节点的 value 中
         (yyval.node) = new ASTNode(DATA_TYPE_NODE, "VARCHAR", (yyloc));
         // 如果有长度定义 ($2 不为 nullptr)，可以将其作为子节点
         (yyval.node)->addChild((yyvsp[0].node));
     }
-#line 1407 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1407 "sql_parser.tab.cpp"
     break;
 
   case 16: /* optional_varchar_length: %empty  */
-#line 153 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 153 "sql_parser.y"
                 { (yyval.node) = nullptr; }
-#line 1413 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1413 "sql_parser.tab.cpp"
     break;
 
   case 17: /* optional_varchar_length: '(' INTEGER_CONST ')'  */
-#line 154 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 154 "sql_parser.y"
                             {
         (yyval.node) = new ASTNode(INTEGER_LITERAL_NODE, std::to_string((yyvsp[-1].int_val)), (yyloc));
     }
-#line 1421 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1421 "sql_parser.tab.cpp"
     break;
 
   case 18: /* select_statement: K_SELECT select_list K_FROM IDENTIFIER optional_where_clause  */
-#line 164 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 164 "sql_parser.y"
                                                                  {
         (yyval.node) = new ASTNode(SELECT_STMT, "", (yyloc));
         (yyval.node)->addChild((yyvsp[-3].node));
@@ -1429,20 +1429,20 @@ yyreduce:
         (yyval.node)->addChild((yyvsp[0].node));
         free((yyvsp[-1].str_val));
     }
-#line 1433 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1433 "sql_parser.tab.cpp"
     break;
 
   case 19: /* select_list: '*'  */
-#line 174 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 174 "sql_parser.y"
         { 
         (yyval.node) = new ASTNode(SELECT_LIST, "", (yyloc));
         (yyval.node)->addChild(new ASTNode(IDENTIFIER_NODE, "*", (yylsp[0])));
     }
-#line 1442 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1442 "sql_parser.tab.cpp"
     break;
 
   case 20: /* select_list: column_list  */
-#line 178 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 178 "sql_parser.y"
                   { 
         // 将 column_list 包装在 SELECT_LIST 节点中
         (yyval.node) = new ASTNode(SELECT_LIST, "", (yyloc));
@@ -1453,59 +1453,59 @@ yyreduce:
         (yyvsp[0].node)->children.clear(); // 防止双重释放
         delete (yyvsp[0].node);
     }
-#line 1457 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1457 "sql_parser.tab.cpp"
     break;
 
   case 21: /* column_list: column_name  */
-#line 191 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 191 "sql_parser.y"
                 {
         (yyval.node) = new ASTNode(COLUMN_LIST, "", (yyloc)); 
         (yyval.node)->addChild((yyvsp[0].node));
     }
-#line 1466 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1466 "sql_parser.tab.cpp"
     break;
 
   case 22: /* column_list: column_list ',' column_name  */
-#line 195 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 195 "sql_parser.y"
                                   {
         (yyvsp[-2].node)->addChild((yyvsp[0].node));
         (yyval.node) = (yyvsp[-2].node);
     }
-#line 1475 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1475 "sql_parser.tab.cpp"
     break;
 
   case 23: /* column_name: IDENTIFIER  */
-#line 202 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 202 "sql_parser.y"
                {
         (yyval.node) = new ASTNode(IDENTIFIER_NODE, (yyvsp[0].str_val), (yylsp[0]));
         free((yyvsp[0].str_val));
     }
-#line 1484 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1484 "sql_parser.tab.cpp"
     break;
 
   case 24: /* optional_where_clause: %empty  */
-#line 209 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 209 "sql_parser.y"
                                                       { (yyval.node) = nullptr; }
-#line 1490 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1490 "sql_parser.tab.cpp"
     break;
 
   case 25: /* optional_where_clause: where_clause  */
-#line 210 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 210 "sql_parser.y"
                    { (yyval.node) = (yyvsp[0].node); }
-#line 1496 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1496 "sql_parser.tab.cpp"
     break;
 
   case 26: /* where_clause: K_WHERE expression  */
-#line 214 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 214 "sql_parser.y"
                        {
         (yyval.node) = new ASTNode(WHERE_CLAUSE, "", (yyloc));
         (yyval.node)->addChild((yyvsp[0].node)); // 将表达式作为 WHERE_CLAUSE 的子节点
     }
-#line 1505 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1505 "sql_parser.tab.cpp"
     break;
 
   case 27: /* insert_statement: K_INSERT K_INTO IDENTIFIER optional_column_list K_VALUES '(' value_list ')'  */
-#line 224 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 224 "sql_parser.y"
                                                                                 {
         (yyval.node) = new ASTNode(INSERT_STMT, "", (yyloc));
         // 子节点1: 表名
@@ -1516,47 +1516,47 @@ yyreduce:
         (yyval.node)->addChild((yyvsp[-1].node));   
         free((yyvsp[-5].str_val));
     }
-#line 1520 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1520 "sql_parser.tab.cpp"
     break;
 
   case 28: /* optional_column_list: %empty  */
-#line 242 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 242 "sql_parser.y"
                 { (yyval.node) = nullptr; }
-#line 1526 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1526 "sql_parser.tab.cpp"
     break;
 
   case 29: /* optional_column_list: '(' column_list ')'  */
-#line 243 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 243 "sql_parser.y"
                           { (yyval.node) = (yyvsp[-1].node); }
-#line 1532 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1532 "sql_parser.tab.cpp"
     break;
 
   case 30: /* value_list: value  */
-#line 247 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 247 "sql_parser.y"
           {
         (yyval.node) = new ASTNode(VALUES_LIST, "", (yyloc));
         (yyval.node)->addChild((yyvsp[0].node));
     }
-#line 1541 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1541 "sql_parser.tab.cpp"
     break;
 
   case 31: /* value_list: value_list ',' value  */
-#line 251 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 251 "sql_parser.y"
                            {
         (yyvsp[-2].node)->addChild((yyvsp[0].node));
         (yyval.node) = (yyvsp[-2].node);
     }
-#line 1550 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1550 "sql_parser.tab.cpp"
     break;
 
   case 32: /* value: literal  */
-#line 258 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 258 "sql_parser.y"
             { (yyval.node) = (yyvsp[0].node); }
-#line 1556 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1556 "sql_parser.tab.cpp"
     break;
 
   case 33: /* delete_statement: K_DELETE K_FROM IDENTIFIER optional_where_clause  */
-#line 264 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 264 "sql_parser.y"
                                                      {
         (yyval.node) = new ASTNode(DELETE_STMT, "", (yyloc));
         // 子节点1: 表名
@@ -1565,75 +1565,75 @@ yyreduce:
         (yyval.node)->addChild((yyvsp[0].node));
         free((yyvsp[-1].str_val));
     }
-#line 1569 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1569 "sql_parser.tab.cpp"
     break;
 
   case 34: /* expression: IDENTIFIER comparison_operator literal  */
-#line 279 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 279 "sql_parser.y"
                                            {
         (yyval.node) = (yyvsp[-1].node);
         (yyval.node)->addChild(new ASTNode(IDENTIFIER_NODE, (yyvsp[-2].str_val), (yylsp[-2])));
         (yyval.node)->addChild((yyvsp[0].node));
         free((yyvsp[-2].str_val));
     }
-#line 1580 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1580 "sql_parser.tab.cpp"
     break;
 
   case 35: /* comparison_operator: OP_EQ  */
-#line 288 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 288 "sql_parser.y"
            { (yyval.node) = new ASTNode(BINARY_EXPR, "=", (yylsp[0]));  }
-#line 1586 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1586 "sql_parser.tab.cpp"
     break;
 
   case 36: /* comparison_operator: OP_NEQ  */
-#line 289 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 289 "sql_parser.y"
              { (yyval.node) = new ASTNode(BINARY_EXPR, "!=", (yylsp[0])); }
-#line 1592 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1592 "sql_parser.tab.cpp"
     break;
 
   case 37: /* comparison_operator: OP_GT  */
-#line 290 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 290 "sql_parser.y"
              { (yyval.node) = new ASTNode(BINARY_EXPR, ">", (yylsp[0]));  }
-#line 1598 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1598 "sql_parser.tab.cpp"
     break;
 
   case 38: /* comparison_operator: OP_GTE  */
-#line 291 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 291 "sql_parser.y"
               { (yyval.node) = new ASTNode(BINARY_EXPR, ">=", (yylsp[0])); }
-#line 1604 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1604 "sql_parser.tab.cpp"
     break;
 
   case 39: /* comparison_operator: OP_LT  */
-#line 292 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 292 "sql_parser.y"
              { (yyval.node) = new ASTNode(BINARY_EXPR, "<", (yylsp[0]));  }
-#line 1610 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1610 "sql_parser.tab.cpp"
     break;
 
   case 40: /* comparison_operator: OP_LTE  */
-#line 293 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 293 "sql_parser.y"
               { (yyval.node) = new ASTNode(BINARY_EXPR, "<=", (yylsp[0])); }
-#line 1616 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1616 "sql_parser.tab.cpp"
     break;
 
   case 41: /* literal: INTEGER_CONST  */
-#line 297 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 297 "sql_parser.y"
                   {
         (yyval.node) = new ASTNode(INTEGER_LITERAL_NODE, std::to_string((yyvsp[0].int_val)), (yylsp[0]));
     }
-#line 1624 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1624 "sql_parser.tab.cpp"
     break;
 
   case 42: /* literal: STRING_CONST  */
-#line 300 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 300 "sql_parser.y"
                    {
         (yyval.node) = new ASTNode(STRING_LITERAL_NODE, (yyvsp[0].str_val), (yylsp[0]));
         free((yyvsp[0].str_val));
     }
-#line 1633 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1633 "sql_parser.tab.cpp"
     break;
 
 
-#line 1637 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1637 "sql_parser.tab.cpp"
 
       default: break;
     }
@@ -1831,7 +1831,7 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 306 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 306 "sql_parser.y"
 
 /* C++ 代码部分 */
 /* 错误处理函数现在可以打印精确的位置 */

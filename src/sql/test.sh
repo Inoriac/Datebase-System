@@ -38,7 +38,7 @@ cleanup() {
 # 无论脚本是正常结束，还是因为错误中断，或者被用户Ctrl+C终止，
 # EXIT 信号都会被触发，从而执行 cleanup 函数。
 # 这是确保目录干净的最可靠方法。
-trap cleanup EXIT
+# trap cleanup EXIT
 
 # --- 编译步骤 ---
 echo "--- 1. 检查所需文件... ---"
