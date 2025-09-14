@@ -28,6 +28,7 @@ add_library(catalog
         src/catalog/table_manager.cpp
         src/catalog/table_schema_manager.cpp
         src/catalog/symbol_table.cpp
+        src/catalog/bplus_tree.cpp
 )
 
 target_include_directories(catalog PUBLIC include)
@@ -96,10 +97,12 @@ add_executable(test_db
         tests/test_table_manager_projection.cpp
         tests/test_primary_key_constraints.cpp
         tests/test_simple_init.cpp
+        tests/test_query_performance.cpp
 )
 
-# 2. 链接库
+# 2. 链接库和头文件
 target_link_libraries(test_db PRIVATE storage catalog gtest gtest_main)
+target_include_directories(test_db PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cmake-build-debug/_deps/googletest-src/googletest/include)
 
 # 3. 启用 gtest 自动发现测试
 include(GoogleTest)

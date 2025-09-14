@@ -6,8 +6,10 @@
 #include "types.h"
 #include "../storage/async_aliases.h"
 #include "table_schema_manager.h"
+#include "bplus_tree.h"
 #include <unordered_map>
 #include <vector>
+#include <memory>
 
 class TableManager {
 public:
@@ -60,6 +62,20 @@ public:
     // 主键唯一性检查
     bool CheckPrimaryKeyUnique(const std::string& table_name, const Record& record, int exclude_record_id = -1);
     bool IsPrimaryKeyValueExists(const std::string& table_name, int primary_key_index, const Value& key_value, int exclude_record_id = -1);
+    
+    // 索引管理
+    bool CreateIndex(const std::string& table_name, const std::string& column_name);
+    bool DropIndex(const std::string& table_name, const std::string& column_name);
+    bool HasIndex(const std::string& table_name, const std::string& column_name) const;
+    
+    // 优化查询（使用索引）
+    std::vector<Record> SelectRecordsWithIndex(const std::string& table_name, 
+                                              const std::string& column_name,
+                                              const Value& key) const;
+    std::vector<Record> SelectRecordsRangeWithIndex(const std::string& table_name,
+                                                   const std::string& column_name,
+                                                   const Value& start_key,
+                                                   const Value& end_key) const;
 
     // 页头信息(存储在页的前几个字节)
     struct PageHeader {
@@ -73,6 +89,7 @@ public:
 private:
     BufferPoolManager* buffer_pool_manager_;
     TableSchemaManager* schema_manager_;                            // 表结构管理器
+    std::unique_ptr<IndexManager> index_manager_;                  // 索引管理器
     std::unordered_map<std::string, TableSchema> table_schemas_;    // 表名 -> 表对象
     std::unordered_map<std::string, std::vector<int>> table_pages;  // 表名 -> 页ID列表
 

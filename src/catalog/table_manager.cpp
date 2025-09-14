@@ -180,6 +180,11 @@ TableManager::TableManager(BufferPoolManager *bpm): buffer_pool_manager_(bpm) {
     schema_manager_ = new TableSchemaManager(bpm, this);
     std::cout << "TableManager: 表结构管理器创建完成" << std::endl;
     
+    // 创建索引管理器
+    std::cout << "TableManager: 创建索引管理器..." << std::endl;
+    index_manager_ = std::make_unique<IndexManager>(bpm);
+    std::cout << "TableManager: 索引管理器创建完成" << std::endl;
+    
     // 延迟加载所有表结构到内存，避免循环依赖
     // 加载根目录（页0）并恢复表首页映射，再加载所有表结构
     std::cout << "TableManager: 加载根目录..." << std::endl;
@@ -240,6 +245,16 @@ bool TableManager::CreateTable(const TableSchema &schema) {
         table_schemas_.erase(schema.table_name_);
         schema_manager_->DeleteTableSchema(schema.table_name_);
         return false;
+    }
+
+    // 为主键自动创建索引
+    if (schema.primary_key_index_ >= 0 && schema.primary_key_index_ < static_cast<int>(schema.columns_.size())) {
+        const std::string& pk_column_name = schema.columns_[schema.primary_key_index_].column_name_;
+        if (index_manager_->CreateIndex(schema.table_name_, pk_column_name)) {
+            std::cout << "TableManager: 为主键列 " << pk_column_name << " 创建索引成功" << std::endl;
+        } else {
+            std::cout << "TableManager: 为主键列 " << pk_column_name << " 创建索引失败" << std::endl;
+        }
     }
 
     // 更新根目录：记录表的第一页
@@ -388,7 +403,75 @@ bool TableManager::InsertRecord(const std::string &table_name, const Record &rec
 
     header.record_count++;
     header.free_space_offset += RecordSerializer::CalculateRecordSize(schema);
-    return WritePageHeader(target_page, header);
+    if (!WritePageHeader(target_page, header)) return false;
+    
+    // 计算当前表的记录ID（只计算当前表的记录）
+    int record_id = 0;
+    auto pages_it2 = table_pages.find(table_name);
+    if (pages_it2 != table_pages.end()) {
+        for (int page_id : pages_it2->second) {
+            Header page_header;
+            if (ReadPageHeader(page_id, page_header)) {
+                // 检查页是否属于当前表
+                int expected_table_id = static_cast<int>(std::hash<std::string>{}(table_name) & 0x7fffffff);
+                if (page_header.table_id == expected_table_id) {
+                    record_id += page_header.record_count;
+                }
+            }
+        }
+    }
+    record_id--; // 减去刚刚添加的记录
+    
+    // 调试：只在记录ID异常时打印
+    if (record_id != header.record_count - 1) {
+        std::cout << "DEBUG: Record ID mismatch! Calculated=" << record_id << ", Expected=" << (header.record_count - 1) << " for table=" << table_name << std::endl;
+    }
+    
+    // 只在记录ID异常时打印
+    if (record_id > 100) {
+        std::cout << "DEBUG: Calculated record_id=" << record_id << " for table=" << table_name << std::endl;
+    }
+    
+    // 更新索引
+    if (index_manager_) {
+        
+        // 只在记录ID异常时打印
+        if (record_id > 100) {
+            std::cout << "DEBUG: Updating index for record_id=" << record_id << ", primary_key_index=" << schema.primary_key_index_ << std::endl;
+        }
+        
+        // 为主键列更新索引
+        if (schema.primary_key_index_ >= 0 && schema.primary_key_index_ < static_cast<int>(record.values_.size())) {
+            const Value& key_value = record.values_[schema.primary_key_index_];
+            const std::string& pk_column_name = schema.columns_[schema.primary_key_index_].column_name_;
+            
+            // 安全地打印键值
+            std::cout << "DEBUG: Inserting into index: table=" << table_name << ", column=" << pk_column_name << ", key=";
+            if (std::holds_alternative<int>(key_value)) {
+                std::cout << std::get<int>(key_value);
+            } else if (std::holds_alternative<std::string>(key_value)) {
+                std::cout << std::get<std::string>(key_value);
+            } else if (std::holds_alternative<bool>(key_value)) {
+                std::cout << (std::get<bool>(key_value) ? "true" : "false");
+            } else {
+                std::cout << "unknown type";
+            }
+            std::cout << ", record_id=" << record_id << std::endl;
+            
+            bool success = index_manager_->InsertRecord(table_name, record, record_id);
+            std::cout << "DEBUG: Index insert result: " << (success ? "success" : "failed") << std::endl;
+            
+            if (!success) {
+                std::cout << "DEBUG: Index insert failed for record " << record_id << std::endl;
+            }
+        } else {
+            std::cout << "DEBUG: No primary key index or invalid index" << std::endl;
+        }
+    } else {
+        std::cout << "DEBUG: No index manager available" << std::endl;
+    }
+    
+    return true;
 }
 
 // 软删除
@@ -976,6 +1059,27 @@ bool TableManager::IsPrimaryKeyValueExists(const std::string& table_name, int pr
         return false;
     }
     
+    // 首先尝试使用索引查找
+    if (index_manager_ && schema->primary_key_index_ == primary_key_index) {
+        const std::string& pk_column_name = schema->columns_[primary_key_index].column_name_;
+        if (index_manager_->HasIndex(table_name, pk_column_name)) {
+            std::cout << "DEBUG: Using index for primary key check" << std::endl;
+            std::vector<int> record_ids = index_manager_->QueryWithIndex(table_name, pk_column_name, key_value);
+            
+            // 如果有结果且不是要排除的记录，则主键重复
+            for (int record_id : record_ids) {
+                if (record_id != exclude_record_id) {
+                    std::cout << "DEBUG: Found duplicate primary key via index!" << std::endl;
+                    return true;
+                }
+            }
+            return false; // 主键唯一
+        }
+    }
+    
+    // 回退到全表扫描
+    std::cout << "DEBUG: Falling back to full table scan for primary key check" << std::endl;
+    
     // 检查表是否有页
     auto it = table_pages.find(table_name);
     if (it == table_pages.end() || it->second.empty()) {
@@ -1053,5 +1157,148 @@ bool TableManager::IsPrimaryKeyValueExists(const std::string& table_name, int pr
     }
     
     return false; // 主键值唯一
+}
+
+// ========== 索引管理方法 ==========
+
+bool TableManager::CreateIndex(const std::string& table_name, const std::string& column_name) {
+    if (!index_manager_) return false;
+    return index_manager_->CreateIndex(table_name, column_name);
+}
+
+bool TableManager::DropIndex(const std::string& table_name, const std::string& column_name) {
+    if (!index_manager_) return false;
+    return index_manager_->DropIndex(table_name, column_name);
+}
+
+bool TableManager::HasIndex(const std::string& table_name, const std::string& column_name) const {
+    if (!index_manager_) return false;
+    return index_manager_->HasIndex(table_name, column_name);
+}
+
+std::vector<Record> TableManager::SelectRecordsWithIndex(const std::string& table_name, 
+                                                        const std::string& column_name,
+                                                        const Value& key) const {
+    std::vector<Record> result;
+    
+    if (!index_manager_) {
+        // 如果没有索引管理器，回退到全表扫描
+        std::string condition;
+        if (std::holds_alternative<int>(key)) {
+            condition = column_name + " = " + std::to_string(std::get<int>(key));
+        } else if (std::holds_alternative<std::string>(key)) {
+            condition = column_name + " = '" + std::get<std::string>(key) + "'";
+        } else if (std::holds_alternative<bool>(key)) {
+            condition = column_name + " = " + (std::get<bool>(key) ? "true" : "false");
+        } else {
+            return result; // 不支持的类型
+        }
+        return const_cast<TableManager*>(this)->SelectRecordsWithCondition(table_name, condition);
+    }
+    
+    // 使用索引查找记录ID
+    std::vector<int> record_ids = index_manager_->QueryWithIndex(table_name, column_name, key);
+    
+    std::cout << "DEBUG: Index query returned " << record_ids.size() << " record IDs" << std::endl;
+    
+    // 根据记录ID获取实际记录
+    auto it = table_schemas_.find(table_name);
+    if (it == table_schemas_.end()) return result;
+    const TableSchema &schema = it->second;
+    
+    const int record_size = RecordSerializer::CalculateRecordSize(schema);
+    int current_record_id = 0;
+    
+    auto pages_it = table_pages.find(table_name);
+    if (pages_it == table_pages.end()) return result;
+    
+    for (int page_id : pages_it->second) {
+        Header header;
+        if (!const_cast<TableManager*>(this)->ReadPageHeader(page_id, header)) continue;
+        
+        int expected_table_id = static_cast<int>(std::hash<std::string>{}(table_name) & 0x7fffffff);
+        if (header.table_id != expected_table_id) continue;
+        
+        for (int i = 0; i < header.record_count; i++) {
+            int offset = Header::HEADER_SIZE + i * record_size;
+            Record rec;
+            if (!const_cast<TableManager*>(this)->ReadRecordFromPage(page_id, offset, rec, schema)) {
+                current_record_id++;
+                continue;
+            }
+            if (rec.is_deleted_) {
+                current_record_id++;
+                continue;
+            }
+            
+            // 检查是否在索引结果中
+            if (std::find(record_ids.begin(), record_ids.end(), current_record_id) != record_ids.end()) {
+                std::cout << "DEBUG: Found record with ID " << current_record_id << std::endl;
+                result.push_back(rec);
+            }
+            
+            current_record_id++;
+        }
+    }
+    
+    std::cout << "DEBUG: Index query returned " << result.size() << " records" << std::endl;
+    return result;
+}
+
+std::vector<Record> TableManager::SelectRecordsRangeWithIndex(const std::string& table_name,
+                                                            const std::string& column_name,
+                                                            const Value& start_key,
+                                                            const Value& end_key) const {
+    std::vector<Record> result;
+    
+    if (!index_manager_) {
+        // 如果没有索引管理器，回退到全表扫描
+        return const_cast<TableManager*>(this)->SelectRecordsWithCondition(table_name, column_name + " >= " + std::to_string(std::get<int>(start_key)) + 
+                                         " AND " + column_name + " <= " + std::to_string(std::get<int>(end_key)));
+    }
+    
+    // 使用索引查找记录ID范围
+    std::vector<int> record_ids = index_manager_->QueryRangeWithIndex(table_name, column_name, start_key, end_key);
+    
+    // 根据记录ID获取实际记录
+    auto it = table_schemas_.find(table_name);
+    if (it == table_schemas_.end()) return result;
+    const TableSchema &schema = it->second;
+    
+    const int record_size = RecordSerializer::CalculateRecordSize(schema);
+    int current_record_id = 0;
+    
+    auto pages_it = table_pages.find(table_name);
+    if (pages_it == table_pages.end()) return result;
+    
+    for (int page_id : pages_it->second) {
+        Header header;
+        if (!const_cast<TableManager*>(this)->ReadPageHeader(page_id, header)) continue;
+        
+        int expected_table_id = static_cast<int>(std::hash<std::string>{}(table_name) & 0x7fffffff);
+        if (header.table_id != expected_table_id) continue;
+        
+        for (int i = 0; i < header.record_count; i++) {
+            int offset = Header::HEADER_SIZE + i * record_size;
+            Record rec;
+            if (!const_cast<TableManager*>(this)->ReadRecordFromPage(page_id, offset, rec, schema)) {
+                current_record_id++;
+                continue;
+            }
+            if (rec.is_deleted_) {
+                current_record_id++;
+                continue;
+            }
+            
+            // 检查是否在索引结果中
+            if (std::find(record_ids.begin(), record_ids.end(), current_record_id) != record_ids.end()) {
+                result.push_back(rec);
+            }
+            
+            current_record_id++;
+        }
+    }
+    
+    return result;
 }
 
