@@ -57,6 +57,10 @@ public:
     bool LoadAllTableSchemas();
     bool SaveAllTableSchemas();
 
+    // 主键唯一性检查
+    bool CheckPrimaryKeyUnique(const std::string& table_name, const Record& record, int exclude_record_id = -1);
+    bool IsPrimaryKeyValueExists(const std::string& table_name, int primary_key_index, const Value& key_value, int exclude_record_id = -1);
+
     // 页头信息(存储在页的前几个字节)
     struct PageHeader {
         int record_count;   // 页中记录数量

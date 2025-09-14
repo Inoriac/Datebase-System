@@ -186,8 +186,9 @@ TableManager::TableManager(BufferPoolManager *bpm): buffer_pool_manager_(bpm) {
     LoadRootDirectory();
     std::cout << "TableManager: 根目录加载完成" << std::endl;
     
-    std::cout << "TableManager: 加载所有表结构..." << std::endl;
-    LoadAllTableSchemas();
+    // 暂时注释掉LoadAllTableSchemas，避免循环依赖
+    // std::cout << "TableManager: 加载所有表结构..." << std::endl;
+    // LoadAllTableSchemas();
     std::cout << "TableManager: 初始化完成" << std::endl;
 }
 
@@ -340,17 +341,25 @@ bool TableManager::InsertRecord(const std::string &table_name, const Record &rec
     if (it == table_schemas_.end()) return false;   // 存在性检查
     const TableSchema &schema = it->second;
 
+    // 检查主键唯一性
+    if (!CheckPrimaryKeyUnique(table_name, record)) {
+        return false; // 主键重复
+    }
+
     // 找到可写页和偏移
     int target_page = -1;
     int offset = -1;
 
-    auto& pages = table_pages[table_name];
-    for (int page_id : pages) {
+    // 检查表是否有页
+    auto pages_it = table_pages.find(table_name);
+    if (pages_it != table_pages.end()) {
+        for (int page_id : pages_it->second) {
         int off = FindFreeSlotInPage(page_id, schema);
         if (off >= 0) {
             target_page = page_id;
             offset = off;
             break;
+            }
         }
     }
 
@@ -389,9 +398,12 @@ bool TableManager::DeleteRecord(const std::string &table_name, int record_id) {
     const TableSchema &schema = it->second;
     const int record_size = RecordSerializer::CalculateRecordSize(schema);
 
-    auto& pages = table_pages[table_name];
+    // 检查表是否有页
+    auto pages_it = table_pages.find(table_name);
+    if (pages_it == table_pages.end()) return false;
+    
     int base = 0;
-    for (int page_id : pages) {
+    for (int page_id : pages_it->second) {
         Header header;
         if (!ReadPageHeader(page_id, header)) return false;
         if (record_id < base + header.record_count) {   // 在该页内
@@ -419,7 +431,11 @@ std::vector<Record> TableManager::SelectRecords(const std::string &table_name) {
 
     const int record_size = RecordSerializer::CalculateRecordSize(schema);
 
-    for (int page_id : table_pages[table_name]) {
+    // 检查表是否有页
+    auto pages_it = table_pages.find(table_name);
+    if (pages_it == table_pages.end()) return out;
+    
+    for (int page_id : pages_it->second) {
         Header header;
         if (!ReadPageHeader(page_id, header)) continue;
 
@@ -455,7 +471,11 @@ std::vector<Record> TableManager::SelectRecordsWithCondition(const std::string &
     const DataType col_type = schema.columns_[static_cast<size_t>(col_idx)].type_;
     const int record_size = RecordSerializer::CalculateRecordSize(schema);
 
-    for (int page_id : table_pages[table_name]) {
+    // 检查表是否有页
+    auto pages_it = table_pages.find(table_name);
+    if (pages_it == table_pages.end()) return out;
+    
+    for (int page_id : pages_it->second) {
         Header header;
         if (!ReadPageHeader(page_id, header)) continue;
 
@@ -480,11 +500,20 @@ bool TableManager::UpdateRecord(const std::string &table_name, int record_id, co
     auto it = table_schemas_.find(table_name);
     if (it == table_schemas_.end()) return false;
     const TableSchema &schema = it->second;
+    
+    // 检查主键唯一性（排除当前记录）
+    if (!CheckPrimaryKeyUnique(table_name, new_record, record_id)) {
+        return false; // 主键重复
+    }
+    
     const int record_size = RecordSerializer::CalculateRecordSize(schema);
 
-    auto &pages = table_pages[table_name];
+    // 检查表是否有页
+    auto pages_it = table_pages.find(table_name);
+    if (pages_it == table_pages.end()) return false;
+    
     int base = 0;
-    for (int page_id : pages) {
+    for (int page_id : pages_it->second) {
         Header header;
         if (!ReadPageHeader(page_id, header)) return false;
         if (record_id < base + header.record_count) {
@@ -518,15 +547,32 @@ int TableManager::UpdateRecordsWithCondition(const std::string &table_name, cons
     }
 
     const int record_size = RecordSerializer::CalculateRecordSize(schema);
-    int updated = 0;
-    for (int page_id : table_pages[table_name]) {
+    int current_record_id = 0;
+    
+    // 检查表是否有页
+    auto pages_it = table_pages.find(table_name);
+    if (pages_it == table_pages.end()) return 0;
+    
+    // 第一遍：检查所有匹配的记录是否都能成功更新（主键唯一性检查）
+    for (int page_id : pages_it->second) {
         Header header;
         if (!ReadPageHeader(page_id, header)) continue;
+        
+        // 检查页是否属于正确的表
+        int expected_table_id = static_cast<int>(std::hash<std::string>{}(table_name) & 0x7fffffff);
+        if (header.table_id != expected_table_id) continue;
+        
         for (int i = 0; i < header.record_count; i++) {
             int offset = Header::HEADER_SIZE + i * record_size;
             Record rec;
-            if (!ReadRecordFromPage(page_id, offset, rec, schema)) continue;
-            if (rec.is_deleted_) continue;
+            if (!ReadRecordFromPage(page_id, offset, rec, schema)) {
+                current_record_id++;
+                continue;
+            }
+            if (rec.is_deleted_) {
+                current_record_id++;
+                continue;
+            }
 
             bool matched = update_all;
             if (!update_all) {
@@ -536,8 +582,52 @@ int TableManager::UpdateRecordsWithCondition(const std::string &table_name, cons
                 }
             }
             if (matched) {
+                // 检查主键唯一性（排除当前记录）
+                if (!CheckPrimaryKeyUnique(table_name, new_record, current_record_id)) {
+                    // 如果任何一个匹配的记录不能更新，则整个批量更新失败
+                    return 0;
+                }
+            }
+            current_record_id++;
+        }
+    }
+    
+    // 第二遍：执行实际更新
+    int updated = 0;
+    current_record_id = 0;
+    
+    for (int page_id : pages_it->second) {
+        Header header;
+        if (!ReadPageHeader(page_id, header)) continue;
+        
+        // 检查页是否属于正确的表
+        int expected_table_id = static_cast<int>(std::hash<std::string>{}(table_name) & 0x7fffffff);
+        if (header.table_id != expected_table_id) continue;
+        
+        for (int i = 0; i < header.record_count; i++) {
+            int offset = Header::HEADER_SIZE + i * record_size;
+            Record rec;
+            if (!ReadRecordFromPage(page_id, offset, rec, schema)) {
+                current_record_id++;
+                continue;
+            }
+            if (rec.is_deleted_) {
+                current_record_id++;
+                continue;
+            }
+
+            bool matched = update_all;
+            if (!update_all) {
+                if (static_cast<size_t>(col_idx) < rec.values_.size()) {
+                    const Value &v = rec.values_[static_cast<size_t>(col_idx)];
+                    matched = CompareValues(v, col_type, op, lit, is_str, is_b, iv, bv);
+                }
+            }
+            if (matched) {
+                // 执行更新
                 if (WriteRecordToPage(page_id, offset, new_record, schema)) updated++;
             }
+            current_record_id++;
         }
     }
     return updated;
@@ -562,7 +652,12 @@ int TableManager::DeleteRecordsWithCondition(const std::string &table_name, cons
 
     const int record_size = RecordSerializer::CalculateRecordSize(schema);
     int deleted = 0;
-    for (int page_id : table_pages[table_name]) {
+    
+    // 检查表是否有页
+    auto pages_it = table_pages.find(table_name);
+    if (pages_it == table_pages.end()) return 0;
+    
+    for (int page_id : pages_it->second) {
         Header header;
         if (!ReadPageHeader(page_id, header)) continue;
         for (int i = 0; i < header.record_count; i++) {
@@ -618,7 +713,12 @@ int TableManager::GetRecordCount(const std::string &table_name) {
     const int record_size = RecordSerializer::CalculateRecordSize(schema);
 
     int total = 0;
-    for (int page_id : table_pages[table_name]) {
+    
+    // 检查表是否有页
+    auto pages_it = table_pages.find(table_name);
+    if (pages_it == table_pages.end()) return 0;
+    
+    for (int page_id : pages_it->second) {
         Header header;
         if (!ReadPageHeader(page_id, header)) continue;
         for (int i = 0; i< header.record_count; i++) {
@@ -633,7 +733,11 @@ int TableManager::GetRecordCount(const std::string &table_name) {
 
 int TableManager::GetPageCount(const std::string &table_name) {
     if (!table_schemas_.count(table_name)) return -1;
-    return static_cast<int>(table_pages[table_name].size());
+    
+    auto pages_it = table_pages.find(table_name);
+    if (pages_it == table_pages.end()) return 0;
+    
+    return static_cast<int>(pages_it->second.size());
 }
 
 // ========= 统计/调试 ===========
@@ -843,5 +947,111 @@ std::vector<std::string> TableManager::ValidateColumns(const std::string& table_
     }
     
     return out;
+}
+
+// ========= 主键唯一性检查 =========
+bool TableManager::CheckPrimaryKeyUnique(const std::string& table_name, const Record& record, int exclude_record_id) {
+    TableSchema* schema = GetTableSchema(table_name);
+    if (!schema || schema->primary_key_index_ < 0) {
+        std::cout << "DEBUG: No primary key, returning true" << std::endl;
+        return true; // 无主键，总是唯一
+    }
+    
+    int primary_key_index = schema->primary_key_index_;
+    if (primary_key_index >= static_cast<int>(record.values_.size())) {
+        std::cout << "DEBUG: Primary key index out of range" << std::endl;
+        return false; // 主键列不存在
+    }
+    
+    const Value& key_value = record.values_[primary_key_index];
+    bool exists = IsPrimaryKeyValueExists(table_name, primary_key_index, key_value, exclude_record_id);
+    std::cout << "DEBUG: Primary key exists: " << exists << ", returning: " << !exists << std::endl;
+    return !exists;
+}
+
+bool TableManager::IsPrimaryKeyValueExists(const std::string& table_name, int primary_key_index, const Value& key_value, int exclude_record_id) {
+    TableSchema* schema = GetTableSchema(table_name);
+    if (!schema) {
+        std::cout << "DEBUG: Schema not found" << std::endl;
+        return false;
+    }
+    
+    // 检查表是否有页
+    auto it = table_pages.find(table_name);
+    if (it == table_pages.end() || it->second.empty()) {
+        std::cout << "DEBUG: Table has no pages, key is unique" << std::endl;
+        return false; // 表没有页，主键值唯一
+    }
+    
+    std::cout << "DEBUG: Checking " << it->second.size() << " pages for primary key" << std::endl;
+    
+    const int record_size = RecordSerializer::CalculateRecordSize(*schema);
+    int current_record_id = 0;
+    
+    for (int page_id : it->second) {
+        Header header;
+        if (!ReadPageHeader(page_id, header)) continue;
+        
+        // 检查页是否属于正确的表
+        int expected_table_id = static_cast<int>(std::hash<std::string>{}(table_name) & 0x7fffffff);
+        if (header.table_id != expected_table_id) {
+            std::cout << "DEBUG: Skipping page " << page_id << " (table_id: " << header.table_id << ", expected: " << expected_table_id << ")" << std::endl;
+            continue;
+        }
+        
+        std::cout << "DEBUG: Page " << page_id << " has " << header.record_count << " records" << std::endl;
+        
+        for (int i = 0; i < header.record_count; i++) {
+            // 跳过要排除的记录（用于更新操作）
+            if (current_record_id == exclude_record_id) {
+                current_record_id++;
+                continue;
+            }
+            
+            int offset = Header::HEADER_SIZE + i * record_size;
+            Record existing_record;
+            if (!ReadRecordFromPage(page_id, offset, existing_record, *schema)) {
+                current_record_id++;
+                continue;
+            }
+            
+            // 跳过已删除的记录
+            if (existing_record.is_deleted_) {
+                current_record_id++;
+                continue;
+            }
+            
+            // 检查主键值是否相同
+            if (primary_key_index < static_cast<int>(existing_record.values_.size())) {
+                const Value& existing_key_value = existing_record.values_[primary_key_index];
+                std::cout << "DEBUG: Comparing existing key: ";
+                if (std::holds_alternative<int>(existing_key_value)) {
+                    std::cout << std::get<int>(existing_key_value);
+                } else if (std::holds_alternative<std::string>(existing_key_value)) {
+                    std::cout << std::get<std::string>(existing_key_value);
+                } else if (std::holds_alternative<bool>(existing_key_value)) {
+                    std::cout << (std::get<bool>(existing_key_value) ? "true" : "false");
+                }
+                std::cout << " with new key: ";
+                if (std::holds_alternative<int>(key_value)) {
+                    std::cout << std::get<int>(key_value);
+                } else if (std::holds_alternative<std::string>(key_value)) {
+                    std::cout << std::get<std::string>(key_value);
+                } else if (std::holds_alternative<bool>(key_value)) {
+                    std::cout << (std::get<bool>(key_value) ? "true" : "false");
+                }
+                std::cout << std::endl;
+                
+                if (existing_key_value == key_value) {
+                    std::cout << "DEBUG: Found duplicate primary key!" << std::endl;
+                    return true; // 找到重复的主键值
+                }
+            }
+            
+            current_record_id++;
+        }
+    }
+    
+    return false; // 主键值唯一
 }
 

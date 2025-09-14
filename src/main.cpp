@@ -164,7 +164,17 @@ static void execute_ast(ASTNode* root, TableManager& tm) {
                     }
                 }
                 bool ok = tm.InsertRecord(table, rec);
-                if (!ok) std::cout << "ERR: insert failed into " << table << "\n"; else std::cout << "OK\n";
+                if (!ok) {
+                    // 检查是否是主键重复错误
+                    TableSchema* schema = tm.GetTableSchema(table);
+                    if (schema && schema->primary_key_index_ >= 0) {
+                        std::cout << "ERR: Primary key constraint violation in table '" << table << "'" << std::endl;
+                    } else {
+                        std::cout << "ERR: insert failed into " << table << "\n";
+                    }
+                } else {
+                    std::cout << "OK\n";
+                }
                 break;
             }
             case SELECT_STMT: {
