@@ -11,7 +11,8 @@ constexpr int PAGE_SIZE = 4096;
 class Page {
 public:
     Page() : page_id_(-1), is_dirty_(false) {
-        memset(data_ , 0, PAGE_SIZE);
+        // 不在构造函数中初始化data_，减少内存分配开销
+        // memset(data_ , 0, PAGE_SIZE);
     }
 
     inline char* GetData() {

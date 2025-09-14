@@ -6,8 +6,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "storage/disk_manager.h"
-#include "storage/buffer_pool_manager.h"
+#include "storage/async_aliases.h"
 #include "../include/catalog/table_manager.h"
 #include "../include/catalog/table_schema_manager.h"
 
@@ -21,7 +20,7 @@ static std::string MakeTempDbFileTSM(const std::string &hint) {
 TEST(TableSchemaManagerTest, InitializeSystemCatalog) {
     std::string db = MakeTempDbFileTSM("init");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(16, &dm);
         TableManager tm(&bpm);
         TableSchemaManager tsm(&bpm, &tm);
@@ -37,7 +36,7 @@ TEST(TableSchemaManagerTest, InitializeSystemCatalog) {
 TEST(TableSchemaManagerTest, SaveLoadDeleteSingleSchema) {
     std::string db = MakeTempDbFileTSM("single");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(16, &dm);
         TableManager tm(&bpm);
         TableSchemaManager tsm(&bpm, &tm);
@@ -77,7 +76,7 @@ TEST(TableSchemaManagerTest, SaveLoadDeleteSingleSchema) {
 TEST(TableSchemaManagerTest, SaveAndLoadMultipleSchemas) {
     std::string db = MakeTempDbFileTSM("multi");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(16, &dm);
         TableManager tm(&bpm);
         TableSchemaManager tsm(&bpm, &tm);
@@ -117,7 +116,7 @@ TEST(TableSchemaManagerTest, SaveAndLoadMultipleSchemas) {
 TEST(TableSchemaManagerTest, OverwriteExistingSchema) {
     std::string db = MakeTempDbFileTSM("overwrite");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(16, &dm);
         TableManager tm(&bpm);
         TableSchemaManager tsm(&bpm, &tm);
@@ -150,7 +149,7 @@ TEST(TableSchemaManagerTest, OverwriteExistingSchema) {
 TEST(TableSchemaManagerTest, AlterColumnOperations) {
     std::string db = MakeTempDbFileTSM("alter");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(16, &dm);
         TableManager tm(&bpm);
         TableSchemaManager tsm(&bpm, &tm);

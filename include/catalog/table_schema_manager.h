@@ -4,7 +4,7 @@
 
 #pragma once
 #include "types.h"
-#include "storage/buffer_pool_manager.h"
+#include "storage/async_aliases.h"
 #include <unordered_map>
 #include <string>
 

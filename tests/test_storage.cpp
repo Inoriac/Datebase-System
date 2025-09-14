@@ -3,8 +3,7 @@
 #include <cstring>
 #include <string>
 #include "../include/catalog/page.h"
-#include "storage/disk_manager.h"
-#include "storage/buffer_pool_manager.h"
+#include "storage/async_aliases.h"
 #include "../include/catalog/types.h"
 #include "../include/catalog/table_manager.h"
 
@@ -34,7 +33,7 @@ TEST(PageTest, BasicReadWrite) {
 TEST(DiskManagerTest, AllocateWriteReadDeallocate) {
     std::string db = MakeTempDbFile("disk_manager");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         // 分配两个页
         int p0 = dm.AllocatePage();
         int p1 = dm.AllocatePage();
@@ -74,7 +73,7 @@ TEST(DiskManagerTest, AllocateWriteReadDeallocate) {
 TEST(BufferPoolManagerTest, NewFetchUnpinFlushAndLRU) {
     std::string db = MakeTempDbFile("bpm");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         // 缓冲池大小设为2，便于触发淘汰
         BufferPoolManager bpm(2, &dm);
 
@@ -119,7 +118,7 @@ TEST(BufferPoolManagerTest, NewFetchUnpinFlushAndLRU) {
 TEST(ReferenceManagementTest, PageReferenceCounting) {
     std::string db = MakeTempDbFile("ref_mgmt");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(10, &dm);
 
         // 分配新页
@@ -163,7 +162,7 @@ TEST(ReferenceManagementTest, PageReferenceCounting) {
 TEST(ReferenceManagementTest, PreventDeleteWithActiveReferences) {
     std::string db = MakeTempDbFile("ref_mgmt_prevent");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(10, &dm);
 
         // 分配新页
@@ -192,7 +191,7 @@ TEST(ReferenceManagementTest, PreventDeleteWithActiveReferences) {
 TEST(FileCompactionTest, BasicCompaction) {
     std::string db = MakeTempDbFile("compaction");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
 
         // 分配多个页
         std::vector<int> page_ids;
@@ -223,7 +222,7 @@ TEST(FileCompactionTest, BasicCompaction) {
 TEST(FileCompactionTest, CompactionWithGaps) {
     std::string db = MakeTempDbFile("compaction_gaps");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
 
         // 分配页：0, 1, 2, 3, 4
         std::vector<int> page_ids;
@@ -252,7 +251,7 @@ TEST(FileCompactionTest, CompactionWithGaps) {
 TEST(PageReuseTest, PageIdReuse) {
     std::string db = MakeTempDbFile("page_reuse");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
 
         // 分配页
         int page1 = dm.AllocatePage();
@@ -283,7 +282,7 @@ TEST(PageReuseTest, PageIdReuse) {
 // ========== 表管理器集成测试 ==========
 TEST(TableManagerIntegrationTest, CreateDropTableWithCompaction) {
     // 创建测试环境
-    DiskManager dm("test_table_compaction.db");
+    DiskManager dm("test_table_compaction.db", 1);
     BufferPoolManager bpm(10, &dm);
     TableManager tm(&bpm);
 
@@ -354,7 +353,7 @@ TEST(TableManagerIntegrationTest, CreateDropTableWithCompaction) {
 TEST(StressTest, LargeScaleOperations) {
     std::string db = MakeTempDbFile("stress_test");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(50, &dm);
         TableManager tm(&bpm);
 
@@ -398,7 +397,7 @@ TEST(StressTest, LargeScaleOperations) {
 TEST(ErrorHandlingTest, InvalidOperations) {
     std::string db = MakeTempDbFile("error_handling");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(10, &dm);
 
         // 尝试删除不存在的页
@@ -421,7 +420,7 @@ TEST(ErrorHandlingTest, InvalidOperations) {
 TEST(UpdateTest, UpdateByIdAndByCondition) {
     std::string db = MakeTempDbFile("update");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(20, &dm);
         TableManager tm(&bpm);
 

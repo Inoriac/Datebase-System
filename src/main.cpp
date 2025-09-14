@@ -2,8 +2,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
-#include "storage/disk_manager.h"
-#include "storage/buffer_pool_manager.h"
+#include "storage/async_aliases.h"
 #include "catalog/table_manager.h"
 #include "ast.h"
 
@@ -17,22 +16,56 @@ void yy_delete_buffer(YY_BUFFER_STATE b);
 
 // 从 AST 生成条件字符串（简化：只支持二元比较）
 static std::string build_condition_from_where(ASTNode* where) {
-    if (!where || where->children.empty()) return "";
+    std::cout << "DEBUG: build_condition_from_where called" << std::endl;
+    if (!where) {
+        std::cout << "DEBUG: where is null" << std::endl;
+        return "";
+    }
+    if (where->children.empty()) {
+        std::cout << "DEBUG: where has no children" << std::endl;
+        return "";
+    }
+    
+    std::cout << "DEBUG: where type = " << (int)where->type << std::endl;
+    std::cout << "DEBUG: where children count = " << where->children.size() << std::endl;
+    
     ASTNode* expr = where->children[0];
-    if (expr->children.size() < 2) return "";
+    if (!expr) {
+        std::cout << "DEBUG: expr is null" << std::endl;
+        return "";
+    }
+    
+    std::cout << "DEBUG: expr type = " << (int)expr->type << std::endl;
+    std::cout << "DEBUG: expr children count = " << expr->children.size() << std::endl;
+    
+    // 根据语法规则，expression节点本身就是BINARY_EXPR类型
+    if (expr->type != BINARY_EXPR) {
+        std::cout << "DEBUG: expr is not BINARY_EXPR, type = " << (int)expr->type << std::endl;
+        return "";
+    }
+    
+    if (expr->children.size() < 2) {
+        std::cout << "DEBUG: expr has less than 2 children" << std::endl;
+        return "";
+    }
+    
     std::string lhs, op, rhs;
+    
+    // children[0]: IDENTIFIER_NODE (列名)
+    std::cout << "DEBUG: children[0] type = " << (int)expr->children[0]->type << std::endl;
     if (expr->children[0]->type == IDENTIFIER_NODE) {
         if (std::holds_alternative<std::string>(expr->children[0]->value))
             lhs = std::get<std::string>(expr->children[0]->value);
     }
-    switch (expr->type) {
-        case EQUAL_OPERATOR: op = "="; break;
-        case GREATER_THAN_OPERATOR: op = ">"; break;
-        case GREATER_THAN_OR_EQUAL_OPERATOR: op = ">="; break;
-        case LESS_THAN_OPERATOR: op = "<"; break;
-        case LESS_THAN_OR_EQUAL_OPERATOR: op = "<="; break;
-        default: op = ""; break;
-    }
+    std::cout << "DEBUG: lhs = '" << lhs << "'" << std::endl;
+    
+    // 操作符在expr节点本身的value中
+    if (std::holds_alternative<std::string>(expr->value))
+        op = std::get<std::string>(expr->value);
+    std::cout << "DEBUG: op = '" << op << "'" << std::endl;
+    
+    // children[1]: INTEGER_LITERAL_NODE 或 STRING_LITERAL_NODE (值)
+    std::cout << "DEBUG: children[1] type = " << (int)expr->children[1]->type << std::endl;
     if (expr->children[1]->type == INTEGER_LITERAL_NODE) {
         if (std::holds_alternative<int>(expr->children[1]->value))
             rhs = std::to_string(std::get<int>(expr->children[1]->value));
@@ -50,8 +83,16 @@ static std::string build_condition_from_where(ASTNode* where) {
         if (std::holds_alternative<std::string>(expr->children[1]->value))
             rhs = std::get<std::string>(expr->children[1]->value);
     }
-    if (lhs.empty() || op.empty() || rhs.empty()) return "";
-    return lhs + " " + op + " " + rhs;
+    std::cout << "DEBUG: rhs = '" << rhs << "'" << std::endl;
+    
+    if (lhs.empty() || op.empty() || rhs.empty()) {
+        std::cout << "DEBUG: one of lhs/op/rhs is empty" << std::endl;
+        return "";
+    }
+    
+    std::string result = lhs + op + rhs;
+    std::cout << "DEBUG: final condition = '" << result << "'" << std::endl;
+    return result;
 }
 
 // 执行解析得到的 AST：按顺序对接 TableManager
@@ -128,14 +169,55 @@ static void execute_ast(ASTNode* root, TableManager& tm) {
             }
             case SELECT_STMT: {
                 // SELECT ... FROM table [WHERE ...]
+                ASTNode* select_list = stmt->children[0];
                 ASTNode* from = stmt->children[1];
                 std::string table;
                 if (std::holds_alternative<std::string>(from->value)) table = std::get<std::string>(from->value);
+                
+                // 解析SELECT列表
+                std::vector<std::string> columns;
+                if (select_list->children.size() == 1 && 
+                    select_list->children[0]->type == IDENTIFIER_NODE &&
+                    std::holds_alternative<std::string>(select_list->children[0]->value) &&
+                    std::get<std::string>(select_list->children[0]->value) == "*") {
+                    // SELECT * - 获取所有列
+                    // 这里我们需要获取表结构来知道所有列名
+                    TableSchema* schema = tm.GetTableSchema(table);
+                    if (schema) {
+                        for (const auto& col : schema->columns_) {
+                            columns.push_back(col.column_name_);
+                        }
+                    }
+                } else {
+                    // SELECT column1, column2, ... - 获取指定列
+                    for (ASTNode* col_node : select_list->children) {
+                        if (col_node->type == IDENTIFIER_NODE && 
+                            std::holds_alternative<std::string>(col_node->value)) {
+                            columns.push_back(std::get<std::string>(col_node->value));
+                        }
+                    }
+                }
+                
                 std::string cond;
                 if (stmt->children.size() > 2) cond = build_condition_from_where(stmt->children[2]);
+                std::cout << "DEBUG: condition = '" << cond << "'" << std::endl;
+                std::cout << "DEBUG: columns = [";
+                for (size_t i = 0; i < columns.size(); ++i) {
+                    std::cout << "'" << columns[i] << "'";
+                    if (i + 1 < columns.size()) std::cout << ", ";
+                }
+                std::cout << "]" << std::endl;
+                
                 if (!tm.TableExists(table)) { std::cout << "ERR: table not found: " << table << "\n"; break; }
-                std::vector<Record> rows = cond.empty() ? tm.SelectRecords(table)
-                                                         : tm.SelectRecordsWithCondition(table, cond);
+                
+                // 使用投影查询
+                std::vector<Record> rows;
+                if (cond.empty()) {
+                    rows = tm.SelectColumns(table, columns);
+                } else {
+                    rows = tm.SelectColumnsWithCondition(table, columns, cond);
+                }
+                
                 std::cout << "rows=" << rows.size() << "\n";
                 for (const auto& r : rows) {
                     std::cout << "{";
@@ -182,8 +264,8 @@ static void print_help() {
 }
 
 int main() {
-    // 初始化存储引擎
-    DiskManager disk_manager("db.data");
+    // 初始化异步存储引擎
+    DiskManager disk_manager("db.data", 2); // 2个工作线程
     BufferPoolManager buffer_pool(128, &disk_manager);
     TableManager table_manager(&buffer_pool);
     // 启动时加载所有已持久化的表结构，避免重启后重复创建同名表

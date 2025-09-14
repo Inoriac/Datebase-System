@@ -7,8 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "storage/disk_manager.h"
-#include "storage/buffer_pool_manager.h"
+#include "storage/async_aliases.h"
 #include "../include/catalog/table_manager.h"
 #include "../include/catalog/table_schema_manager.h"
 
@@ -23,7 +22,7 @@ static std::string MakeTempDbFileProjection(const std::string& hint) {
 TEST(TableManagerProjectionTest, BasicProjection) {
     std::string db = MakeTempDbFileProjection("basic");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(16, &dm);
         TableManager tm(&bpm);
 
@@ -80,7 +79,7 @@ TEST(TableManagerProjectionTest, BasicProjection) {
 TEST(TableManagerProjectionTest, ProjectionWithCondition) {
     std::string db = MakeTempDbFileProjection("condition");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(16, &dm);
         TableManager tm(&bpm);
 
@@ -123,7 +122,7 @@ TEST(TableManagerProjectionTest, ProjectionWithCondition) {
 TEST(TableManagerProjectionTest, SingleColumnProjection) {
     std::string db = MakeTempDbFileProjection("single");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(16, &dm);
         TableManager tm(&bpm);
 
@@ -159,7 +158,7 @@ TEST(TableManagerProjectionTest, SingleColumnProjection) {
 TEST(TableManagerProjectionTest, ColumnReordering) {
     std::string db = MakeTempDbFileProjection("reorder");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(16, &dm);
         TableManager tm(&bpm);
 
@@ -199,7 +198,7 @@ TEST(TableManagerProjectionTest, ColumnReordering) {
 TEST(TableManagerProjectionTest, InvalidColumnNames) {
     std::string db = MakeTempDbFileProjection("invalid");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(16, &dm);
         TableManager tm(&bpm);
 
@@ -225,7 +224,7 @@ TEST(TableManagerProjectionTest, InvalidColumnNames) {
 TEST(TableManagerProjectionTest, NonExistentTable) {
     std::string db = MakeTempDbFileProjection("nonexistent");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(16, &dm);
         TableManager tm(&bpm);
 
@@ -243,7 +242,7 @@ TEST(TableManagerProjectionTest, NonExistentTable) {
 TEST(TableManagerProjectionTest, EmptyColumnList) {
     std::string db = MakeTempDbFileProjection("empty");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(16, &dm);
         TableManager tm(&bpm);
 
@@ -268,7 +267,7 @@ TEST(TableManagerProjectionTest, EmptyColumnList) {
 TEST(TableManagerProjectionTest, PerformanceComparison) {
     std::string db = MakeTempDbFileProjection("performance");
     {
-        DiskManager dm(db);
+        DiskManager dm(db, 1);
         BufferPoolManager bpm(16, &dm);
         TableManager tm(&bpm);
 

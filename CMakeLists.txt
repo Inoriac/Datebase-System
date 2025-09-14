@@ -11,8 +11,11 @@ include_directories(include)
 # storage 模块库
 # ====================
 add_library(storage
-        src/storage/disk_manager.cpp
-        src/storage/buffer_pool_manager.cpp
+        src/storage/async_disk_manager.cpp
+        src/storage/async_buffer_pool_manager.cpp
+        # 保留原文件作为备份，但不再编译
+        # src/storage/disk_manager.cpp
+        # src/storage/buffer_pool_manager.cpp
 )
 
 target_include_directories(storage PUBLIC include)
@@ -99,3 +102,11 @@ target_link_libraries(test_db PRIVATE storage catalog gtest gtest_main)
 # 3. 启用 gtest 自动发现测试
 include(GoogleTest)
 gtest_discover_tests(test_db)
+
+# ====================
+# 异步IO示例程序
+# ====================
+add_executable(test_async_integration
+        tests/test_async_integration.cpp
+)
+target_link_libraries(test_async_integration PRIVATE storage catalog)

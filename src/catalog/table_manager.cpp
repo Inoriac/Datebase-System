@@ -173,13 +173,22 @@ static int ReadInt(const char* src) {
 }
 
 TableManager::TableManager(BufferPoolManager *bpm): buffer_pool_manager_(bpm) {
+    std::cout << "TableManager: 开始初始化..." << std::endl;
+    
     // 创建表结构管理器
+    std::cout << "TableManager: 创建表结构管理器..." << std::endl;
     schema_manager_ = new TableSchemaManager(bpm, this);
+    std::cout << "TableManager: 表结构管理器创建完成" << std::endl;
     
     // 延迟加载所有表结构到内存，避免循环依赖
     // 加载根目录（页0）并恢复表首页映射，再加载所有表结构
+    std::cout << "TableManager: 加载根目录..." << std::endl;
     LoadRootDirectory();
+    std::cout << "TableManager: 根目录加载完成" << std::endl;
+    
+    std::cout << "TableManager: 加载所有表结构..." << std::endl;
     LoadAllTableSchemas();
+    std::cout << "TableManager: 初始化完成" << std::endl;
 }
 
 TableManager::~TableManager() {
