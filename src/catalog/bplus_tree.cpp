@@ -234,11 +234,39 @@ std::vector<int> BPlusTreeIndex::Find(const Value& key) const {
 std::vector<int> BPlusTreeIndex::FindRange(const Value& start_key, const Value& end_key) const {
     if (root_page_id_ == -1) return {};
     
+    std::vector<int> result;
+    
+    // 找到包含start_key的叶子节点
     auto leaf = FindLeaf(start_key);
     if (!leaf) return {};
     
-    auto leaf_node = std::static_pointer_cast<BPlusLeafNode>(leaf);
-    return leaf_node->FindRange(start_key, end_key);
+    auto current_leaf = std::static_pointer_cast<BPlusLeafNode>(leaf);
+    
+    // 遍历所有相关的叶子节点
+    while (current_leaf) {
+        std::cout << "DEBUG: Searching in leaf node with " << current_leaf->keys_.size() << " keys" << std::endl;
+        
+        // 在当前叶子节点中搜索范围
+        auto leaf_results = current_leaf->FindRange(start_key, end_key);
+        result.insert(result.end(), leaf_results.begin(), leaf_results.end());
+        
+        // 检查是否需要继续到下一个叶子节点
+        if (current_leaf->keys_.empty() || current_leaf->keys_.back() < end_key) {
+            // 如果当前叶子节点的最大键小于end_key，继续到下一个叶子节点
+            if (current_leaf->next_leaf_page_id_ != -1) {
+                current_leaf = std::static_pointer_cast<BPlusLeafNode>(LoadNode(current_leaf->next_leaf_page_id_));
+                if (!current_leaf) break;
+            } else {
+                break;
+            }
+        } else {
+            // 当前叶子节点已经包含了所有可能的键
+            break;
+        }
+    }
+    
+    std::cout << "DEBUG: Range query found " << result.size() << " records" << std::endl;
+    return result;
 }
 
 std::shared_ptr<BPlusNode> BPlusTreeIndex::FindLeaf(const Value& key) const {
@@ -251,15 +279,30 @@ std::shared_ptr<BPlusNode> BPlusTreeIndex::FindLeaf(const Value& key) const {
         return nullptr;
     }
     
+    std::cout << "DEBUG: Starting from root page " << root_page_id_ << ", height=" << height_ << std::endl;
+    
     while (!current->IsLeaf()) {
         auto internal = std::static_pointer_cast<BPlusInternalNode>(current);
+        
+        // 调试：打印内部节点的键
+        std::cout << "DEBUG: Internal node has " << internal->keys_.size() << " keys: ";
+        for (size_t i = 0; i < internal->keys_.size(); ++i) {
+            if (std::holds_alternative<int>(internal->keys_[i])) {
+                std::cout << std::get<int>(internal->keys_[i]) << " ";
+            }
+        }
+        std::cout << std::endl;
+        
         int child_page_id = internal->FindChild(key);
+        std::cout << "DEBUG: Looking for key " << std::get<int>(key) << ", found child page " << child_page_id << std::endl;
+        
         current = LoadNode(child_page_id);
         if (!current) {
             return nullptr;
         }
     }
     
+    std::cout << "DEBUG: Reached leaf node with " << current->GetKeyCount() << " keys" << std::endl;
     return current;
 }
 
@@ -309,11 +352,14 @@ bool BPlusTreeIndex::SplitNode(std::shared_ptr<BPlusNode> node) {
             
             std::cout << "DEBUG: Created new root with separator key=" << std::get<int>(new_leaf->keys_[0]) 
                       << ", left child=" << leaf->page_id_ << ", right child=" << new_page_id << std::endl;
+            std::cout << "DEBUG: New root has " << new_root->keys_.size() << " keys and " 
+                      << new_root->child_page_ids_.size() << " children" << std::endl;
         } else {
             // 如果不是根节点，需要将分隔键插入到父节点
             // 这里需要实现向上传播的逻辑
-            // 暂时简化处理，直接保存
             std::cout << "DEBUG: Leaf split but not root - parent update not implemented" << std::endl;
+            std::cout << "DEBUG: This is a critical issue - parent node needs to be updated with separator key " 
+                      << std::get<int>(new_leaf->keys_[0]) << std::endl;
         }
         
         return true;
@@ -478,10 +524,28 @@ std::shared_ptr<BPlusNode> BPlusTreeIndex::LoadNode(int page_id) const {
         internal->child_page_ids_.resize(key_count + 1);
         
         for (int i = 0; i < key_count; ++i) {
-            int key_value;
-            std::memcpy(&key_value, data + offset, sizeof(int));
-            internal->keys_[i] = key_value;
-            offset += sizeof(int);
+            // 根据key_type_反序列化键值
+            if (key_type_ == DataType::Int) {
+                int key_value;
+                std::memcpy(&key_value, data + offset, sizeof(int));
+                internal->keys_[i] = key_value;
+                offset += sizeof(int);
+            } else if (key_type_ == DataType::Varchar) {
+                // 读取字符串长度
+                int str_len;
+                std::memcpy(&str_len, data + offset, sizeof(int));
+                offset += sizeof(int);
+                
+                // 读取字符串内容
+                std::string key_value(data + offset, str_len);
+                offset += str_len;
+                internal->keys_[i] = key_value;
+            } else if (key_type_ == DataType::Bool) {
+                bool key_value;
+                std::memcpy(&key_value, data + offset, sizeof(bool));
+                internal->keys_[i] = key_value;
+                offset += sizeof(bool);
+            }
         }
         
         for (int i = 0; i <= key_count; ++i) {
@@ -578,9 +642,23 @@ bool BPlusTreeIndex::SaveNode(std::shared_ptr<BPlusNode> node) {
         offset += sizeof(int);
         
         for (int i = 0; i < key_count; ++i) {
-            int key_value = std::get<int>(internal->keys_[i]);
-            std::memcpy(data + offset, &key_value, sizeof(int));
-            offset += sizeof(int);
+            // 根据key_type_序列化键值
+            if (key_type_ == DataType::Int) {
+                int key_value = std::get<int>(internal->keys_[i]);
+                std::memcpy(data + offset, &key_value, sizeof(int));
+                offset += sizeof(int);
+            } else if (key_type_ == DataType::Varchar) {
+                std::string key_value = std::get<std::string>(internal->keys_[i]);
+                int str_len = static_cast<int>(key_value.length());
+                std::memcpy(data + offset, &str_len, sizeof(int));
+                offset += sizeof(int);
+                std::memcpy(data + offset, key_value.c_str(), str_len);
+                offset += str_len;
+            } else if (key_type_ == DataType::Bool) {
+                bool key_value = std::get<bool>(internal->keys_[i]);
+                std::memcpy(data + offset, &key_value, sizeof(bool));
+                offset += sizeof(bool);
+            }
         }
         
         for (int i = 0; i <= key_count; ++i) {
