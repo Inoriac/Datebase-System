@@ -69,7 +69,30 @@ void check_column_exists(ASTNode *node, const std::unordered_map<std::string, co
 
     if (!column_found)
     {
-        throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + col_name + "' does not exist in the specified tables.", node);
+        std::cout << "可用表名: [";
+        for (auto it = tables.begin(); it != tables.end(); ++it)
+        {
+            std::cout << it->first; // 打印表名 (键)
+            if (std::next(it) != tables.end())
+            {
+                std::cout << ", ";
+            }
+        }
+        // 动态收集所有可用的列名
+        std::vector<std::string> all_possible_columns;
+        for (const auto &pair : tables)
+        {
+            const TableInfo *table_info = pair.second;
+            for (const auto &col_pair : table_info->columns)
+            {
+                all_possible_columns.push_back(col_pair.first);
+            }
+        }
+        throw SemanticError(SemanticError::COLUMN_NOT_FOUND,
+                            "Column '" + col_name + "' does not exist in the specified tables.",
+                            node,
+                            pure_col_name,         // 传递用户输入的原始列名
+                            all_possible_columns); // 传递动态生成的候选列名列表
     }
 }
 void check_where_clause(ASTNode *node, const std::unordered_map<std::string, const TableInfo *> &tables)
@@ -83,6 +106,7 @@ void check_where_clause(ASTNode *node, const std::unordered_map<std::string, con
     {
     case BINARY_EXPR:
     case EQUAL_OPERATOR:
+    case NOT_EQUAL_OPERATOR:
     case GREATER_THAN_OPERATOR:
     case LESS_THAN_OPERATOR:
     case GREATER_THAN_OR_EQUAL_OPERATOR:
@@ -164,43 +188,116 @@ void check_create_statement(ASTNode *statement_node)
 
 void check_insert_statement(ASTNode *statement_node)
 {
+    // 检查AST结构，至少需要表名和VALUES子句
     if (statement_node->children.size() < 2)
     {
         throw SemanticError(SemanticError::SYNTAX_ERROR, "Malformed INSERT statement AST.", statement_node);
     }
+
     ASTNode *table_name_node = statement_node->children[0];
-    ASTNode *values_list_node = statement_node->children[1];
     std::string table_name = std::get<std::string>(table_name_node->value);
 
+    // 检查表是否存在
     if (!catalog.tableExists(table_name))
     {
         throw SemanticError(SemanticError::TABLE_NOT_FOUND, "Table '" + table_name + "' does not exist.", table_name_node);
     }
     const TableInfo &table_info = catalog.getTable(table_name);
-    size_t value_count = values_list_node->children.size();
-    size_t column_count = table_info.column_order.size();
-    if (value_count != column_count)
+
+    // 提取值列表节点
+    ASTNode *values_list_node = nullptr;
+
+    // 检查是否存在显式列名列表
+    if (statement_node->children.size() == 3)
     {
-        throw SemanticError(SemanticError::TYPE_MISMATCH, "Value count (" + std::to_string(value_count) + ") does not match column count (" + std::to_string(column_count) + ") in table '" + table_name + "'.", values_list_node);
+        // 存在显式列名列表的情况：
+        // AST结构: [TABLE_NAME_NODE, COLUMN_LIST_NODE, VALUES_LIST_NODE]
+        ASTNode *column_list_node = statement_node->children[1];
+        values_list_node = statement_node->children[2];
+
+        // 检查值的数量是否与显式列名数量匹配
+        if (values_list_node->children.size() != column_list_node->children.size())
+        {
+            throw SemanticError(SemanticError::SYNTAX_ERROR, "Number of values does not match number of columns specified.", values_list_node);
+        }
+
+        // 遍历显式列名和值，进行语义检查
+        for (size_t i = 0; i < column_list_node->children.size(); ++i)
+        {
+            ASTNode *col_name_node = column_list_node->children[i];
+            const ASTNode *value_node = values_list_node->children[i];
+
+            if (col_name_node->type != IDENTIFIER_NODE)
+            {
+                throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid column name in column list.", col_name_node);
+            }
+            std::string col_name = std::get<std::string>(col_name_node->value);
+
+            std::unordered_map<std::string, const TableInfo *> temp_tables;
+            // 将当前表的名称和信息放入 map 中
+            temp_tables[table_name] = &table_info;
+            // 检查列名是否存在于表中
+            for (size_t i = 0; i < column_list_node->children.size(); ++i)
+            {
+                ASTNode *col_name_node = column_list_node->children[i];
+                const ASTNode *value_node = values_list_node->children[i];
+
+                // if (col_name_node->type != IDENTIFIER_NODE)
+                // {
+                //     throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid column name in column list.", col_name_node);
+                // }
+
+                // 使用 check_column_exists 来检查列是否存在
+                // 这会处理列不存在的错误，并提供智能纠错提示
+                check_column_exists(col_name_node, temp_tables);
+            }
+
+            // 检查值的类型是否与列的类型匹配
+            const ColumnInfo &col_info = table_info.columns.at(col_name);
+            if (!typesMatch(value_node, col_info.type))
+            {
+                throw SemanticError(SemanticError::TYPE_MISMATCH, "Type mismatch for column '" + col_name + "'. Expected " + col_info.type + ", but got an incompatible value.", value_node);
+            }
+        }
+    }
+    else if (statement_node->children.size() == 2)
+    {
+        // 隐式列名列表的情况：
+        // AST结构: [TABLE_NAME_NODE, VALUES_LIST_NODE]
+        values_list_node = statement_node->children[1];
+
+        // 检查值的数量是否与表的所有列数匹配
+        size_t value_count = values_list_node->children.size();
+        size_t column_count = table_info.column_order.size();
+        if (value_count != column_count)
+        {
+            throw SemanticError(SemanticError::TYPE_MISMATCH, "Value count (" + std::to_string(value_count) + ") does not match column count (" + std::to_string(column_count) + ") in table '" + table_name + "'.", values_list_node);
+        }
+
+        // 按顺序遍历值，并进行类型检查
+        for (size_t i = 0; i < value_count; ++i)
+        {
+            const ASTNode *value_node = values_list_node->children[i];
+            const std::string &col_name = table_info.column_order[i];
+
+            if (table_info.columns.count(col_name) == 0)
+            {
+                throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + col_name + "' does not exist in symbol table.", value_node, col_name);
+            }
+            const ColumnInfo &col_info = table_info.columns.at(col_name);
+            if (!typesMatch(value_node, col_info.type))
+            {
+                throw SemanticError(SemanticError::TYPE_MISMATCH, "Type mismatch for column '" + col_name + "'. Expected " + col_info.type + ", but got an incompatible value.", value_node);
+            }
+        }
+    }
+    else
+    {
+        // 异常的AST结构
+        throw SemanticError(SemanticError::SYNTAX_ERROR, "Malformed INSERT statement AST structure.", statement_node);
     }
 
-    for (size_t i = 0; i < value_count; ++i)
-    {
-        const ASTNode *value_node = values_list_node->children[i];
-        const std::string &col_name = table_info.column_order[i];
-
-        if (table_info.columns.count(col_name) == 0)
-        {
-            throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + col_name + "' does not exist in symbol table.", value_node);
-        }
-        const ColumnInfo &col_info = table_info.columns.at(col_name);
-        if (!typesMatch(value_node, col_info.type))
-        {
-            throw SemanticError(SemanticError::TYPE_MISMATCH, "Type mismatch for column '" + col_name + "'. Expected " + col_info.type + ", but got an incompatible value.", value_node);
-        }
-    }
-    auto logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
-    logger->Info("Semantic check passed for INSERT INTO '{}'", table_name);
+    std::cout << "Semantic check passed for INSERT INTO '" + table_name + "'.\n";
 }
 
 void check_select_statement(ASTNode *statement_node)
@@ -224,6 +321,7 @@ void check_select_statement(ASTNode *statement_node)
         throw SemanticError(SemanticError::TABLE_NOT_FOUND, "Table '" + table_name + "' does not exist.", from_node);
     }
     available_tables[table_name] = &catalog.getTable(table_name);
+    // std::cout << col_node;
 
     if (!from_node->children.empty())
     {
@@ -382,7 +480,7 @@ void check_update_statement(ASTNode *statement_node)
         const TableInfo &table_info = *available_tables.at(table_name);
         if (table_info.columns.count(col_name) == 0)
         {
-            throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + col_name + "' does not exist in table '" + table_name + "'.", col_set_node);
+            throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + col_name + "' does not exist in table '" + table_name + "'.", col_set_node, col_name);
         }
 
         const ColumnInfo &col_info = table_info.columns.at(col_name);
@@ -444,7 +542,110 @@ void semantic_analysis(ASTNode *root_node)
         }
         catch (const SemanticError &e)
         {
-            std::cerr << "语义分析失败: " << e.what() << " (错误类型: " << e.getType() << ":" << e.getErrorDescription() << ")\n";
+            std::pair<int, int> location = e.getLocation();
+            std::cerr << "语义分析失败: " << e.what() << " (错误类型: " << e.getType() << ":" << e.getErrorDescription() << ")";
+            std::cerr << "  (行: " << location.first << ", 列: " << location.second << ")" << std::endl;
+
+            // if (location.first > 0)
+            // {
+            //     std::cerr << "  (行: " << location.first << ", 列: " << location.second << ")" << std::endl;
+            // }
+
+            // std::cerr << "" << std::endl;
+            // std::cerr << e.getType()
+            //           << std::endl;
+
+            if (e.getType() == SemanticError::COLUMN_NOT_FOUND)
+            {
+                std::string user_token = e.getTokenValue();
+                // 使用 e.getCandidateColumns() 动态获取列名列表
+                const std::vector<std::string> &candidate_columns = e.getCandidateColumns();
+                std::string best_match = "";
+                int min_distance = -1;
+                bool special_case_handled = false; // 新增一个标记，用于判断是否已处理特殊情况
+
+                // std::cout << "候选列名: [";
+                // for (size_t i = 0; i < candidate_columns.size(); ++i)
+                // {
+                //     std::cout << candidate_columns[i];
+                //     if (i < candidate_columns.size() - 1)
+                //     {
+                //         std::cout << ", ";
+                //     }
+                // }
+                std::cout << "智能纠错:";
+                // if (!user_token.empty() && !candidate_columns.empty())
+                // {
+
+                //     for (const auto &correct_col : candidate_columns)
+                //     {
+                //         int distance = get_edit_distance(user_token, correct_col);
+                //         if (min_distance == -1 || distance < min_distance)
+                //         {
+                //             min_distance = distance;
+                //             best_match = correct_col;
+                //         }
+                //     }
+
+                //     // 将判断条件放宽，例如：编辑距离小于等于2
+                //     if (min_distance > 0 && min_distance <= 2)
+                //     {
+                //         std::cerr << "你是不是想输入: '" << best_match << "'?\n";
+                //     }
+                // }
+
+                if (!user_token.empty() && !candidate_columns.empty())
+                {
+                    // Step 1: 硬编码特殊规则 - 检查 "id" 的变体
+                    // 将用户输入转换为小写，以便进行不区分大小写的比较
+                    std::string lower_token = user_token;
+                    std::transform(lower_token.begin(), lower_token.end(), lower_token.begin(), ::tolower);
+
+                    if (lower_token == "id")
+                    {
+                        std::vector<std::string> id_matches;
+                        for (const auto &correct_col : candidate_columns)
+                        {
+                            // 将候选列名也转换为小写进行不区分大小写的查找
+                            std::string lower_correct_col = correct_col;
+                            std::transform(lower_correct_col.begin(), lower_correct_col.end(), lower_correct_col.begin(), ::tolower);
+
+                            if (lower_correct_col.find(lower_token) != std::string::npos)
+                            {
+                                id_matches.push_back(correct_col);
+                            }
+                        }
+                        if (!id_matches.empty())
+                        {
+                            std::cerr << "你是不是想输入以下其中一个列名?\n";
+                            for (const auto &match : id_matches)
+                            {
+                                std::cerr << "- " << match << "\n";
+                            }
+                            special_case_handled = true;
+                        }
+                    }
+
+                    // Step 2: 如果特殊情况没有处理，回退到通用编辑距离算法
+                    if (!special_case_handled)
+                    {
+                        for (const auto &correct_col : candidate_columns)
+                        {
+                            int distance = get_edit_distance(user_token, correct_col);
+                            if (min_distance == -1 || distance < min_distance)
+                            {
+                                min_distance = distance;
+                                best_match = correct_col;
+                            }
+                        }
+
+                        if (min_distance > 0 && min_distance <= 2)
+                        {
+                            std::cerr << "你是不是想输入: '" << best_match << "'?\n";
+                        }
+                    }
+                }
+            }
             return;
         }
         catch (const std::exception &e)
