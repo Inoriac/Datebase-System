@@ -4,7 +4,7 @@
 //
 
 #pragma once
-#include "types.h"
+#include "../catalog/types.h"
 #include "../storage/async_aliases.h"
 #include "../log/component_loggers.h"
 #include <vector>

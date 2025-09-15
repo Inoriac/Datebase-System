@@ -2,7 +2,7 @@
 // B+树索引实现
 //
 
-#include "../../include/catalog/bplus_tree.h"
+#include "../../include/bplus/bplus_tree.h"
 #include "../../include/catalog/record_serializer.h"
 #include "../../include/log/log_config.h"
 #include <iostream>

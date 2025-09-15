@@ -6,7 +6,7 @@
 #include "types.h"
 #include "../storage/async_aliases.h"
 #include "table_schema_manager.h"
-#include "bplus_tree.h"
+#include "../bplus/bplus_tree.h"
 #include "../log/log_config.h"
 #include <unordered_map>
 #include <vector>

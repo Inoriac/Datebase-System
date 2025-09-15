@@ -39,7 +39,7 @@ add_library(catalog
         src/catalog/table_manager.cpp
         src/catalog/table_schema_manager.cpp
         src/catalog/symbol_table.cpp
-        src/catalog/bplus_tree.cpp
+        src/bplus/bplus_tree.cpp
 )
 
 target_include_directories(catalog PUBLIC include)

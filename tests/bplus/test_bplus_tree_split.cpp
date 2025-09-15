@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "../../include/storage/async_aliases.h"
-#include "../../include/catalog/bplus_tree.h"
+#include "../../include/bplus/bplus_tree.h"
 #include "../../include/catalog/types.h"
 
 // 为每次测试创建独立的临时文件，避免相互干扰
