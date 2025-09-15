@@ -12,7 +12,7 @@
 void printCurrentStatementAST(ASTNode *statement_node)
 {
     std::cout << "\n--- 正在解析的AST ---\n";
-    printAST(statement_node,0);
+    printAST(statement_node, 0);
     std::cout << "---------------------\n\n";
 }
 bool typesMatch(const ASTNode *value_node, const std::string &column_type)
@@ -161,41 +161,102 @@ void check_create_statement(ASTNode *statement_node)
 
 void check_insert_statement(ASTNode *statement_node)
 {
+    // 检查AST结构，至少需要表名和VALUES子句
     if (statement_node->children.size() < 2)
     {
         throw SemanticError(SemanticError::SYNTAX_ERROR, "Malformed INSERT statement AST.", statement_node);
     }
+
     ASTNode *table_name_node = statement_node->children[0];
-    ASTNode *values_list_node = statement_node->children[1];
     std::string table_name = std::get<std::string>(table_name_node->value);
 
+    // 检查表是否存在
     if (!catalog.tableExists(table_name))
     {
         throw SemanticError(SemanticError::TABLE_NOT_FOUND, "Table '" + table_name + "' does not exist.", table_name_node);
     }
     const TableInfo &table_info = catalog.getTable(table_name);
-    size_t value_count = values_list_node->children.size();
-    size_t column_count = table_info.column_order.size();
-    if (value_count != column_count)
-    {
-        throw SemanticError(SemanticError::TYPE_MISMATCH, "Value count (" + std::to_string(value_count) + ") does not match column count (" + std::to_string(column_count) + ") in table '" + table_name + "'.", values_list_node);
-    }
+    
+    // 提取值列表节点
+    ASTNode *values_list_node = nullptr;
 
-    for (size_t i = 0; i < value_count; ++i)
+    // 检查是否存在显式列名列表
+    if (statement_node->children.size() == 3)
     {
-        const ASTNode *value_node = values_list_node->children[i];
-        const std::string &col_name = table_info.column_order[i];
+        // 存在显式列名列表的情况：
+        // AST结构: [TABLE_NAME_NODE, COLUMN_LIST_NODE, VALUES_LIST_NODE]
+        ASTNode *column_list_node = statement_node->children[1];
+        values_list_node = statement_node->children[2];
 
-        if (table_info.columns.count(col_name) == 0)
+        // 检查值的数量是否与显式列名数量匹配
+        if (values_list_node->children.size() != column_list_node->children.size())
         {
-            throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + col_name + "' does not exist in symbol table.", value_node);
+            throw SemanticError(SemanticError::SYNTAX_ERROR, "Number of values does not match number of columns specified.", values_list_node);
         }
-        const ColumnInfo &col_info = table_info.columns.at(col_name);
-        if (!typesMatch(value_node, col_info.type))
+
+        // 遍历显式列名和值，进行语义检查
+        for (size_t i = 0; i < column_list_node->children.size(); ++i)
         {
-            throw SemanticError(SemanticError::TYPE_MISMATCH, "Type mismatch for column '" + col_name + "'. Expected " + col_info.type + ", but got an incompatible value.", value_node);
+            ASTNode *col_name_node = column_list_node->children[i];
+            const ASTNode *value_node = values_list_node->children[i];
+
+            if (col_name_node->type != IDENTIFIER_NODE)
+            {
+                throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid column name in column list.", col_name_node);
+            }
+            std::string col_name = std::get<std::string>(col_name_node->value);
+
+            // 检查列名是否存在于表中
+            if (table_info.columns.find(col_name) == table_info.columns.end())
+            {
+                throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + col_name + "' does not exist in table '" + table_name + "'.", col_name_node);
+            }
+
+            // 检查值的类型是否与列的类型匹配
+            const ColumnInfo &col_info = table_info.columns.at(col_name);
+            if (!typesMatch(value_node, col_info.type))
+            {
+                throw SemanticError(SemanticError::TYPE_MISMATCH, "Type mismatch for column '" + col_name + "'. Expected " + col_info.type + ", but got an incompatible value.", value_node);
+            }
         }
     }
+    else if (statement_node->children.size() == 2)
+    {
+        // 隐式列名列表的情况：
+        // AST结构: [TABLE_NAME_NODE, VALUES_LIST_NODE]
+        values_list_node = statement_node->children[1];
+
+        // 检查值的数量是否与表的所有列数匹配
+        size_t value_count = values_list_node->children.size();
+        size_t column_count = table_info.column_order.size();
+        if (value_count != column_count)
+        {
+            throw SemanticError(SemanticError::TYPE_MISMATCH, "Value count (" + std::to_string(value_count) + ") does not match column count (" + std::to_string(column_count) + ") in table '" + table_name + "'.", values_list_node);
+        }
+
+        // 按顺序遍历值，并进行类型检查
+        for (size_t i = 0; i < value_count; ++i)
+        {
+            const ASTNode *value_node = values_list_node->children[i];
+            const std::string &col_name = table_info.column_order[i];
+
+            if (table_info.columns.count(col_name) == 0)
+            {
+                throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + col_name + "' does not exist in symbol table.", value_node);
+            }
+            const ColumnInfo &col_info = table_info.columns.at(col_name);
+            if (!typesMatch(value_node, col_info.type))
+            {
+                throw SemanticError(SemanticError::TYPE_MISMATCH, "Type mismatch for column '" + col_name + "'. Expected " + col_info.type + ", but got an incompatible value.", value_node);
+            }
+        }
+    }
+    else
+    {
+        // 异常的AST结构
+        throw SemanticError(SemanticError::SYNTAX_ERROR, "Malformed INSERT statement AST structure.", statement_node);
+    }
+    
     std::cout << "Semantic check passed for INSERT INTO '" + table_name + "'.\n";
 }
 
@@ -436,7 +497,14 @@ void semantic_analysis(ASTNode *root_node)
         }
         catch (const SemanticError &e)
         {
-            std::cerr << "语义分析失败: " << e.what() << " (错误类型: " << e.getType() << ":" << e.getErrorDescription() << ")\n";
+            std::pair<int, int> location = e.getLocation();
+            std::cerr << "语义分析失败: " << e.what() << " (错误类型: " << e.getType() << ":" << e.getErrorDescription() << ")";
+            std::cerr << "  (行: " << location.first << ", 列: " << location.second << ")" << std::endl;
+
+            // if (location.first > 0)
+            // {
+            //     std::cerr << "  (行: " << location.first << ", 列: " << location.second << ")" << std::endl;
+            // }
             return;
         }
         catch (const std::exception &e)

@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 #include <sstream>
+#include <utility>
 
 class SemanticError : public std::runtime_error
 {
@@ -21,7 +22,7 @@ public:
     };
 
     SemanticError(ErrorType type, const std::string &reason, const ASTNode *node)
-        : std::runtime_error(reason), error_type(type)
+        : std::runtime_error(reason), error_type(type), error_node(node)
     {
         std::stringstream ss;
         ss << reason;
@@ -35,6 +36,15 @@ public:
     }
 
     ErrorType getType() const { return error_type; }
+    std::pair<int, int> getLocation() const
+    {
+        if (error_node)
+        {
+            return {error_node->location.first_line, error_node->location.first_column};
+        }
+        // 如果没有节点信息，返回一个表示“无”的特殊值，例如 {0, 0} 或 {-1, -1}
+        return {0, 0};
+    }
 
     std::string getErrorDescription() const
     {
@@ -61,6 +71,7 @@ public:
 private:
     ErrorType error_type;
     std::string description_;
+    const ASTNode *error_node;
 };
 
 #endif
