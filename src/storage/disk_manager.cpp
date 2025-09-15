@@ -33,13 +33,11 @@ void DiskManager::InitializePageIdManagement() {
     } else {
         // 现有数据库，从当前页数开始分配
         next_page_id_ = num_pages_;
-        // TODO: 可能需要修改，新增标记位
         // 简化：假设所有现有页都是有效的，不加载删除信息
         free_list_.clear();
     }
 }
 
-// TODO: 这里可能需要加入异步IO
 void DiskManager::ReadPage(int page_id, char *page_data) {
     if (page_id >= num_pages_) {
         std::cout << "Invalid page read: " << page_id << std::endl;
@@ -60,7 +58,6 @@ void DiskManager::ReadPage(int page_id, char *page_data) {
     db_io_.read(page_data, PAGE_SIZE);  // 从起始位置开始，往后读 PAGE_SIZE 个字节的内容，放到 page_data 指向的内存中
 }
 
-// TODO: 这里可能需要加入异步IO
 void DiskManager::WritePage(int page_id, const char *page_data) {
     if (page_id >= num_pages_) {
         num_pages_ = page_id + 1;

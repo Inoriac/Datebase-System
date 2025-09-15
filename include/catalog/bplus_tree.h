@@ -6,6 +6,7 @@
 #pragma once
 #include "types.h"
 #include "../storage/async_aliases.h"
+#include "../log/component_loggers.h"
 #include <vector>
 #include <memory>
 #include <unordered_map>
@@ -122,6 +123,9 @@ private:
     int root_page_id_;
     int max_keys_per_node_;
     int height_;
+    
+    // 日志器
+    std::shared_ptr<DatabaseSystem::Log::BPlusTreeLogger> logger_;
     
     // 节点管理
     std::shared_ptr<BPlusNode> LoadNode(int page_id) const;

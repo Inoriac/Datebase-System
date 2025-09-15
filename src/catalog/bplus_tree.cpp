@@ -4,6 +4,7 @@
 
 #include "../../include/catalog/bplus_tree.h"
 #include "../../include/catalog/record_serializer.h"
+#include "../../include/log/log_config.h"
 #include <iostream>
 #include <algorithm>
 #include <cstring>
@@ -124,6 +125,9 @@ BPlusTreeIndex::BPlusTreeIndex(BufferPoolManager* bpm, const std::string& table_
     : bpm_(bpm), table_name_(table_name), column_name_(column_name), 
       column_index_(column_index), root_page_id_(-1), max_keys_per_node_(50), height_(0) {
     
+    // 初始化日志器
+    logger_ = DatabaseSystem::Log::LogConfig::GetBPlusTreeLogger();
+    
     // 根据列类型设置键类型
     // 简化实现，根据列名判断类型
     if (column_name == "table_name" || column_name == "name") {
@@ -134,9 +138,9 @@ BPlusTreeIndex::BPlusTreeIndex(BufferPoolManager* bpm, const std::string& table_
         key_type_ = DataType::Int; // 默认类型
     }
     
-    std::cout << "DEBUG: BPlusTreeIndex created with key_type=" << 
+    logger_->Info("BPlusTreeIndex created with key_type={}", 
         (key_type_ == DataType::Int ? "INT" : 
-         key_type_ == DataType::Varchar ? "STRING" : "BOOL") << std::endl;
+         key_type_ == DataType::Varchar ? "STRING" : "BOOL"));
 }
 
 BPlusTreeIndex::~BPlusTreeIndex() {
@@ -144,30 +148,36 @@ BPlusTreeIndex::~BPlusTreeIndex() {
 }
 
 bool BPlusTreeIndex::Insert(const Value& key, int record_id) {
-    std::cout << "DEBUG: BPlusTreeIndex::Insert called with key=";
+    // 将键值转换为字符串用于日志
+    std::string key_str;
     if (std::holds_alternative<int>(key)) {
-        std::cout << std::get<int>(key);
+        key_str = std::to_string(std::get<int>(key));
     } else if (std::holds_alternative<std::string>(key)) {
-        std::cout << std::get<std::string>(key);
+        key_str = std::get<std::string>(key);
     } else if (std::holds_alternative<bool>(key)) {
-        std::cout << (std::get<bool>(key) ? "true" : "false");
+        key_str = std::get<bool>(key) ? "true" : "false";
     } else {
-        std::cout << "unknown type";
+        key_str = "unknown type";
     }
-    std::cout << ", record_id=" << record_id << std::endl;
+    
+    logger_->LogInsert(key_str, record_id);
     
     if (root_page_id_ == -1) {
         // 创建根节点
         root_page_id_ = AllocateNewPage();
         if (root_page_id_ == -1) {
-            std::cout << "DEBUG: Failed to allocate root page" << std::endl;
+            logger_->Error("Failed to allocate root page");
             return false;
         }
         
         auto root = std::make_shared<BPlusLeafNode>(root_page_id_);
         root->Insert(key, record_id);
         bool saved = SaveNode(root);
-        std::cout << "DEBUG: Root node saved: " << (saved ? "success" : "failed") << std::endl;
+        if (saved) {
+            logger_->Debug("Root node saved successfully");
+        } else {
+            logger_->Error("Failed to save root node");
+        }
         height_ = 1;
         return saved;
     }
@@ -175,7 +185,7 @@ bool BPlusTreeIndex::Insert(const Value& key, int record_id) {
     // 找到应该插入的叶子节点
     auto leaf = FindLeaf(key);
     if (!leaf) {
-        std::cout << "DEBUG: Could not find leaf for insertion" << std::endl;
+        logger_->Error("Could not find leaf for insertion");
         return false;
     }
     
@@ -184,7 +194,7 @@ bool BPlusTreeIndex::Insert(const Value& key, int record_id) {
     // 检查键是否已经存在
     int existing_record_id = leaf_node->Find(key);
     if (existing_record_id != -1) {
-        std::cout << "DEBUG: Key already exists with record_id=" << existing_record_id << std::endl;
+        logger_->Warn("Key already exists with record_id={}", existing_record_id);
         return false;
     }
     
@@ -193,15 +203,19 @@ bool BPlusTreeIndex::Insert(const Value& key, int record_id) {
         // 叶子节点未满，直接插入
         leaf_node->Insert(key, record_id);
         bool saved = SaveNode(leaf_node);
-        std::cout << "DEBUG: Leaf node saved: " << (saved ? "success" : "failed") << std::endl;
+        if (saved) {
+            logger_->Debug("Leaf node saved successfully");
+        } else {
+            logger_->Error("Failed to save leaf node");
+        }
         return saved;
     } else {
         // 叶子节点已满，需要分裂
-        std::cout << "DEBUG: Leaf node is full, splitting..." << std::endl;
-        std::cout << "DEBUG: Before split - node has " << leaf_node->GetKeyCount() << " keys" << std::endl;
+        logger_->Info("Leaf node is full, splitting...");
+        logger_->Debug("Before split - node has {} keys", leaf_node->GetKeyCount());
         leaf_node->Insert(key, record_id);
         SplitNode(leaf_node);
-        std::cout << "DEBUG: After split - node has " << leaf_node->GetKeyCount() << " keys" << std::endl;
+        logger_->Debug("After split - node has {} keys", leaf_node->GetKeyCount());
         return true;
     }
 }
@@ -222,33 +236,37 @@ bool BPlusTreeIndex::Remove(const Value& key) {
 }
 
 std::vector<int> BPlusTreeIndex::Find(const Value& key) const {
-    // 打印所有查找操作
-    std::cout << "DEBUG: BPlusTreeIndex::Find called with key=";
+    // 将键值转换为字符串用于日志
+    std::string key_str;
     if (std::holds_alternative<std::string>(key)) {
-        std::cout << std::get<std::string>(key);
+        key_str = std::get<std::string>(key);
     } else if (std::holds_alternative<int>(key)) {
-        std::cout << std::get<int>(key);
+        key_str = std::to_string(std::get<int>(key));
+    } else if (std::holds_alternative<bool>(key)) {
+        key_str = std::get<bool>(key) ? "true" : "false";
+    } else {
+        key_str = "unknown type";
     }
-    std::cout << ", root_page_id=" << root_page_id_ << std::endl;
+    
+    logger_->Debug("Find called with key={}, root_page_id={}", key_str, root_page_id_);
     
     if (root_page_id_ == -1) {
-        std::cout << "DEBUG: No root page, returning empty" << std::endl;
+        logger_->Debug("No root page, returning empty");
         return {};
     }
     
     auto leaf = FindLeaf(key);
     if (!leaf) {
-        std::cout << "DEBUG: Could not find leaf node, returning empty" << std::endl;
+        logger_->Error("Could not find leaf node, returning empty");
         return {};
     }
     
     auto leaf_node = std::static_pointer_cast<BPlusLeafNode>(leaf);
     int record_id = leaf_node->Find(key);
     
-    std::cout << "DEBUG: Leaf node found record_id=" << record_id << std::endl;
+    logger_->LogFind(key_str, record_id != -1, record_id);
     
     if (record_id == -1) {
-        std::cout << "DEBUG: Key not found in leaf, returning empty" << std::endl;
         return {};
     }
     return {record_id};

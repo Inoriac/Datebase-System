@@ -21,6 +21,17 @@ add_library(storage
 target_include_directories(storage PUBLIC include)
 
 # ====================
+# log 模块库
+# ====================
+add_library(log
+        src/log/logger.cpp
+        src/log/component_loggers.cpp
+        src/log/log_config.cpp
+)
+
+target_include_directories(log PUBLIC include)
+
+# ====================
 # catalog 模块库
 # ====================
 add_library(catalog
@@ -32,6 +43,7 @@ add_library(catalog
 )
 
 target_include_directories(catalog PUBLIC include)
+target_link_libraries(catalog PRIVATE log)
 
 
 # ====================
@@ -43,6 +55,7 @@ add_library(execution
 )
 
 target_include_directories(execution PUBLIC include)
+target_link_libraries(execution PRIVATE log)
 
 # ====================
 # 主程序
@@ -52,7 +65,7 @@ add_executable(Database_System
         src/sql/sql_parser.tab.cpp
         src/sql/sql_lexer.yy.cpp
 )
-target_link_libraries(Database_System PRIVATE storage catalog)
+target_link_libraries(Database_System PRIVATE storage catalog log)
 target_include_directories(Database_System PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/sql)
 
 # ====================
@@ -66,7 +79,7 @@ add_executable(sql
 )
 
 target_include_directories(sql PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/sql)
-target_link_libraries(sql PRIVATE execution catalog)
+target_link_libraries(sql PRIVATE execution catalog log)
 
 # 运行时资源：将 test.sql 复制到可执行文件目录
 add_custom_command(TARGET sql POST_BUILD
@@ -104,7 +117,7 @@ add_executable(test_db
 )
 
 # 2. 链接库和头文件
-target_link_libraries(test_db PRIVATE storage catalog gtest gtest_main)
+target_link_libraries(test_db PRIVATE storage catalog log gtest gtest_main)
 target_include_directories(test_db PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cmake-build-debug/_deps/googletest-src/googletest/include)
 
 # 3. 启用 gtest 自动发现测试
@@ -117,4 +130,4 @@ gtest_discover_tests(test_db)
 add_executable(test_async_integration
         tests/test_async_integration.cpp
 )
-target_link_libraries(test_async_integration PRIVATE storage catalog)
+target_link_libraries(test_async_integration PRIVATE storage catalog log)
