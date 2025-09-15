@@ -5,7 +5,8 @@
 #include <vector>
 #include <variant>
 
-struct Location {
+struct Location
+{
     int first_line = 0;
     int first_column = 0;
     int last_line = 0;
@@ -31,20 +32,28 @@ enum ASTNodeType
     STRING_LITERAL_NODE = 9,
 
     // 复合节点类型
-    COLUMN_DEFINITIONS_LIST,
-    COLUMN_LIST,                // 新增: 独立的列名列表节点
-    VALUES_LIST,
-    SELECT_LIST,  // 新增
-    
-    WHERE_CLAUSE, // 新增
-    EQUAL_OPERATOR, // 新增
-    BINARY_EXPR, // 二元表达式,value 为操作符类型，如 '=',左右子节点分别为操作数
+    COLUMN_DEFINITIONS_LIST = 10,
+    COLUMN_LIST = 11,
+    VALUES_LIST = 12,
+    SELECT_LIST = 13,
 
-    FROM_CLAUSE, // 新增
-    GREATER_THAN_OR_EQUAL_OPERATOR, // 新增
-    GREATER_THAN_OPERATOR, // 新增
-    LESS_THAN_OPERATOR, // 新增
-    LESS_THAN_OR_EQUAL_OPERATOR // 新增
+    WHERE_CLAUSE = 14, // where 14
+    FROM_CLAUSE = 15,  // from 15
+
+    EQUAL_OPERATOR = 16,                 //= 16
+    GREATER_THAN_OPERATOR = 17,          //> 17
+    LESS_THAN_OPERATOR = 18,             //< 18
+    GREATER_THAN_OR_EQUAL_OPERATOR = 19, //>= 19
+    LESS_THAN_OR_EQUAL_OPERATOR = 20,    //<= 20
+    BINARY_EXPR = 21,                    // 二元表达式,value 为操作符类型，如 '=',左右子节点分别为操作数
+
+    // 扩展
+    UPDATE_STMT = 22,
+    SET_CLAUSE = 23,
+    JOIN_CLAUSE = 24,
+    ORDER_BY_CLAUSE = 25,
+    GROUP_BY_CLAUSE = 26,
+    ON_CONDITION = 27,
 
 };
 

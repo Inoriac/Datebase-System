@@ -3,21 +3,29 @@
 #include "sql_semantic_analyzer.h" // 假设这是你的语义分析函数声明文件
 #include "plan_generator.h"        // 执行计划生成器
 #include "executor.h"              // 执行器
+#include "utils.h"
 
 #include <iostream>
-
 #include <cstdio>
 
 // Bison/Flex 生成的函数和全局变量的外部声明
 extern int yyparse();
-extern FILE* yyin;
-extern ASTNode* ast_root; // 在.y文件中定义的全局AST根节点
+extern FILE *yyin;
+extern ASTNode *ast_root; // 在.y文件中定义的全局AST根节点
 
 // 声明 mock 数据生成函数
 ASTNode *createMockCreateTableAst();
+ASTNode *createMockCreateTableAst_order();
+
 ASTNode *createMockInsertAst();
+ASTNode *createMockInsertAst_order();
+
 ASTNode *createMockSelectAst();
+
+ASTNode *createMockFullSelectAst();
+
 ASTNode *createMockDeleteAst();
+ASTNode *createMockUpdateAst();
 
 ASTNode *createMockInsertAst_TableDoesNotExist();
 
@@ -33,80 +41,12 @@ void free_ast(ASTNode *node)
     }
     delete node;
 }
-// 辅助函数，用于将 ASTNodeType 转换为字符串
-std::string nodeTypeToString(ASTNodeType type)
-{
-    switch (type)
-    {
-    case ROOT_NODE:
-        return "ROOT_NODE";
-    case CREATE_TABLE_STMT:
-        return "CREATE_TABLE_STMT";
-    case INSERT_STMT:
-        return "INSERT_STMT";
-    case SELECT_STMT:
-        return "SELECT_STMT";
-    case DELETE_STMT:
-        return "DELETE_STMT";
-    case IDENTIFIER_NODE:
-        return "IDENTIFIER_NODE";
-    case DATA_TYPE_NODE:
-        return "DATA_TYPE_NODE";
-    case INTEGER_LITERAL_NODE:
-        return "INTEGER_LITERAL_NODE";
-    case STRING_LITERAL_NODE:
-        return "STRING_LITERAL_NODE";
-    case COLUMN_DEFINITIONS_LIST:
-        return "COLUMN_DEFINITIONS_LIST";
-    case VALUES_LIST:
-        return "VALUES_LIST";
-    case SELECT_LIST:
-        return "SELECT_LIST";
-    case WHERE_CLAUSE:
-        return "WHERE_CLAUSE";
-    case EQUAL_OPERATOR:
-        return "EQUAL_OPERATOR";
-    default:
-        return "UNKNOWN_NODE";
-    }
-}
-// 递归打印 AST
-void printAST(ASTNode *node, int depth = 0)
-{
-    if (!node)
-    {
-        return;
-    }
 
-    // 打印当前节点的缩进
-    for (int i = 0; i < depth; ++i)
-    {
-        std::cout << "  ";
-    }
-
-    // 打印节点类型和值
-    std::cout << "- " << nodeTypeToString(node->type);
-    if (std::holds_alternative<std::string>(node->value))
-    {
-        std::cout << ": " << std::get<std::string>(node->value);
-    }
-    else if (std::holds_alternative<int>(node->value))
-    {
-        std::cout << ": " << std::get<int>(node->value);
-    }
-    std::cout << std::endl;
-
-    // 递归打印所有子节点
-    for (ASTNode *child : node->children)
-    {
-        printAST(child, depth + 1);
-    }
-}
 int main()
 {
     try
     {
-        // FILE* inputFile = fopen("test.sql", "r");
+        // FILE *inputFile = fopen("test.sql", "r");
         // if (!inputFile)
         // {
         //     std::cerr << "无法打开输入文件 test.sql" << std::endl;
@@ -121,31 +61,42 @@ int main()
         // }
         // fclose(inputFile);
         // std::cout << "--- 解析成功，生成 AST。 ---\n";
-        // printAST(ast_root,0);
+        // printAST(ast_root, 0);
+
+        // std::cout << "--- 开始语义分析。 ---\n";
         // semantic_analysis(ast_root);
         // std::cout << "语义分析通过。\n";
 
-
-
-        
         // 创建一个根节点，用于包含所有语句
         ASTNode *root_node = new ASTNode(ROOT_NODE, "");
 
         // 1. 添加 CREATE TABLE 语句
         ASTNode *createAst = createMockCreateTableAst();
         root_node->addChild(createAst);
+        ASTNode *createAst_order = createMockCreateTableAst_order();
+        root_node->addChild(createAst_order);
 
         // 2. 添加 INSERT INTO 语句
         ASTNode *insertAst = createMockInsertAst();
         root_node->addChild(insertAst);
+        ASTNode *insertAst_order = createMockInsertAst_order();
+        root_node->addChild(insertAst_order);
 
         // 3. 添加 SELECT 语句
         ASTNode *selectAst = createMockSelectAst();
         root_node->addChild(selectAst);
 
+        // 3.5 select扩展测试语句
+        ASTNode *fullselectAst = createMockFullSelectAst();
+        root_node->addChild(fullselectAst);
+
         // 4. 添加 DELETE 语句
         ASTNode *deleteAst = createMockDeleteAst();
         root_node->addChild(deleteAst);
+
+        // 5. 添加 UPDATE 语句
+        ASTNode *updateAst = createMockUpdateAst();
+        root_node->addChild(updateAst);
 
         std::cout << "--- 正在对所有语句进行语义分析 ---\n";
         printAST(root_node, 0);
@@ -154,8 +105,7 @@ int main()
         // std::cout << "所有语句语义分析通过。\n";
 
         // 在程序结束时清理内存
-        // delete root_node 会自动删除所有子节点，无需单独删除
-        free_ast(root_node);
+        delete root_node;
     }
     catch (const std::exception &e)
     {
@@ -163,56 +113,55 @@ int main()
     }
     return 0;
 
-    PlanGenerator plan_gen;
+    // PlanGenerator plan_gen;
 
-    try
-    {
+    // try
+    // {
 
-        ASTNode *root_ast1 = new ASTNode(ROOT_NODE, "");
-        // 1. 添加 CREATE TABLE 语句
-        ASTNode *createAst = createMockCreateTableAst();
-        root_ast1->addChild(createAst);
-        // // 2. 添加 INSERT INTO 语句
-        // ASTNode *root_ast2 = new ASTNode(ROOT_NODE, "");
-        // ASTNode *insertAst = createMockInsertAst();
-        // root_ast2->addChild(insertAst);
+    //     ASTNode *root_ast1 = new ASTNode(ROOT_NODE, "");
+    //     // 1. 添加 CREATE TABLE 语句
+    //     ASTNode *createAst = createMockCreateTableAst();
+    //     root_ast1->addChild(createAst);
+    //     // // 2. 添加 INSERT INTO 语句
+    //     // ASTNode *root_ast2 = new ASTNode(ROOT_NODE, "");
+    //     // ASTNode *insertAst = createMockInsertAst();
+    //     // root_ast2->addChild(insertAst);
 
-        // 1. 生成执行计划
-        std::unique_ptr<Operator> plan_root = plan_gen.generatePlan(root_ast1);
-        std::cout << "--- 正在生成执行计划 ---\n";
+    //     // 1. 生成执行计划
+    //     std::unique_ptr<Operator> plan_root = plan_gen.generatePlan(root_ast1);
+    //     std::cout << "--- 正在生成执行计划 ---\n";
 
-        // 2. 打印树形格式
-        std::cout << "--- 树形格式 ---\n";
-        PlanGenerator::printPlanTree(plan_root.get());
+    //     // 2. 打印树形格式
+    //     std::cout << "--- 树形格式 ---\n";
+    //     PlanGenerator::printPlanTree(plan_root.get());
 
-        // 3. 打印JSON格式
-        std::cout << "\n--- JSON 格式 ---\n";
-        std::cout << PlanGenerator::planToJSON(plan_root.get()) << "\n";
+    //     // 3. 打印JSON格式
+    //     std::cout << "\n--- JSON 格式 ---\n";
+    //     std::cout << PlanGenerator::planToJSON(plan_root.get()) << "\n";
 
-        // 4. 执行计划
-        std::cout << "\n--- 正在执行计划 ---\n";
-        Executor executor(std::move(plan_root));
-        std::vector<Tuple> results = executor.execute();
+    //     // 4. 执行计划
+    //     std::cout << "\n--- 正在执行计划 ---\n";
+    //     Executor executor(std::move(plan_root));
+    //     std::vector<Tuple> results = executor.execute();
 
-        // 打印结果
-        std::cout << "执行成功。结果行数：" << results.size() << "\n";
-        delete root_ast1;
-    }
-    catch (const SemanticError &e)
-    {
-        std::cerr << "计划生成失败: " << e.what() << "\n";
-    }
-    catch (const std::exception &e)
-    {
-        std::cerr << "发生意外错误: " << e.what() << "\n";
-    }
+    //     // 打印结果
+    //     std::cout << "执行成功。结果行数：" << results.size() << "\n";
+    //     delete root_ast1;
+    // }
+    // catch (const SemanticError &e)
+    // {
+    //     std::cerr << "计划生成失败: " << e.what() << "\n";
+    // }
+    // // catch (const std::exception &e)
+    // // {
+    // //     std::cerr << "发生意外错误: " << e.what() << "\n";
+    // // }
 
-    return 0;
+    // return 0;
 }
 ASTNode *createMockCreateTableAst()
 {
     // 根节点（CREATE_TABLE_STMT）
-    // 你之前这里写了 ASTNode(..., "")，这是正确的用法，我帮你保留了
     ASTNode *create_stmt = new ASTNode(CREATE_TABLE_STMT, "");
 
     // 表名节点
@@ -226,7 +175,6 @@ ASTNode *createMockCreateTableAst()
     // id 列节点：列名是父节点
     ASTNode *id_col = new ASTNode(IDENTIFIER_NODE, "id");
     col_definitions->addChild(id_col);
-
     // id 列的类型节点：类型是子节点
     ASTNode *id_type = new ASTNode(DATA_TYPE_NODE, "INT");
     id_col->addChild(id_type);
@@ -234,9 +182,47 @@ ASTNode *createMockCreateTableAst()
     // name 列节点：列名是父节点
     ASTNode *name_col = new ASTNode(IDENTIFIER_NODE, "name");
     col_definitions->addChild(name_col);
-
     // name 列的类型节点：类型是子节点
     ASTNode *name_type = new ASTNode(DATA_TYPE_NODE, "STRING");
+    name_col->addChild(name_type);
+
+    // age 列节点：列名是父节点
+    ASTNode *age_col = new ASTNode(IDENTIFIER_NODE, "age");
+    col_definitions->addChild(age_col);
+    // age 列的类型节点：类型是子节点
+    ASTNode *age_type = new ASTNode(DATA_TYPE_NODE, "INT");
+    age_col->addChild(age_type);
+
+    return create_stmt;
+}
+
+ASTNode *createMockCreateTableAst_order()
+{
+
+    ASTNode *create_stmt = new ASTNode(CREATE_TABLE_STMT, "");
+
+    // 表名节点
+    ASTNode *table_name = new ASTNode(IDENTIFIER_NODE, "orders");
+    create_stmt->addChild(table_name);
+
+    // 列定义列表节点
+    ASTNode *col_definitions = new ASTNode(COLUMN_DEFINITIONS_LIST, "");
+    create_stmt->addChild(col_definitions);
+
+    // id 列节点：列名是父节点
+    ASTNode *id_col = new ASTNode(IDENTIFIER_NODE, "order_id");
+    col_definitions->addChild(id_col);
+
+    // id 列的类型节点：类型是子节点
+    ASTNode *id_type = new ASTNode(DATA_TYPE_NODE, "INT");
+    id_col->addChild(id_type);
+
+    // name 列节点：列名是父节点
+    ASTNode *name_col = new ASTNode(IDENTIFIER_NODE, "user_id");
+    col_definitions->addChild(name_col);
+
+    // name 列的类型节点：类型是子节点
+    ASTNode *name_type = new ASTNode(DATA_TYPE_NODE, "INT");
     name_col->addChild(name_type);
 
     return create_stmt;
@@ -262,6 +248,32 @@ ASTNode *createMockInsertAst()
     // 字符串常量值节点
     ASTNode *string_val = new ASTNode(STRING_LITERAL_NODE, "Alice");
     values_list->addChild(string_val);
+
+    ASTNode *int_val_ = new ASTNode(INTEGER_LITERAL_NODE, 19);
+    values_list->addChild(int_val_);
+
+    return insert_stmt;
+}
+ASTNode *createMockInsertAst_order()
+{
+    // 根节点（INSERT_STMT）
+    ASTNode *insert_stmt = new ASTNode(INSERT_STMT, "");
+
+    // 表名节点
+    ASTNode *table_name = new ASTNode(IDENTIFIER_NODE, "orders");
+    insert_stmt->addChild(table_name);
+
+    // 值列表节点
+    ASTNode *values_list = new ASTNode(VALUES_LIST, "");
+    insert_stmt->addChild(values_list);
+
+    // 整型常量值节点
+    ASTNode *int_val = new ASTNode(INTEGER_LITERAL_NODE, 10001);
+    values_list->addChild(int_val);
+
+    // user_id
+    ASTNode *int_val_ = new ASTNode(INTEGER_LITERAL_NODE, 101);
+    values_list->addChild(int_val_);
 
     return insert_stmt;
 }
@@ -298,6 +310,87 @@ ASTNode *createMockSelectAst()
     return select_stmt;
 }
 
+/*
+SELECT
+    users.name,
+    COUNT(orders.order_id)
+FROM
+    users
+JOIN
+    orders
+ON
+    users.id = orders.user_id //拼成一条数据的条件 拼表本质是拼数据
+WHERE
+    users.age > 25
+GROUP BY
+    users.name
+ORDER BY
+    COUNT(orders.order_id) DESC;
+*/
+ASTNode *createMockFullSelectAst()
+{
+    // 根节点
+    ASTNode *select_stmt = new ASTNode(SELECT_STMT, "");
+
+    // 1. SELECT 列表
+    ASTNode *select_list_node = new ASTNode(SELECT_LIST, "");
+    select_stmt->addChild(select_list_node);
+
+    // - 选择列: users.name
+    ASTNode *user_name_node = new ASTNode(IDENTIFIER_NODE, "users.name");
+    select_list_node->addChild(user_name_node);
+
+    // - 选择列: COUNT(orders.order_id)
+    // 假设 COUNT 函数也用一个特殊的节点类型表示
+    // ASTNode* count_func_node = new ASTNode(FUNCTION_CALL_NODE, "COUNT");
+    // count_func_node->addChild(new ASTNode(IDENTIFIER_NODE, "orders.order_id"));
+    // select_list_node->addChild(count_func_node);
+
+    // 为了简化，我们只使用列名节点来表示
+    ASTNode *order_count_node = new ASTNode(IDENTIFIER_NODE, "orders.order_id");
+    select_list_node->addChild(order_count_node);
+
+    // 2. FROM 子句
+    ASTNode *from_clause_node = new ASTNode(FROM_CLAUSE, "users");
+    select_stmt->addChild(from_clause_node);
+
+    // 3. JOIN 子句 (作为 FROM 的子节点)
+    ASTNode *join_clause_node = new ASTNode(JOIN_CLAUSE, "");
+    from_clause_node->addChild(join_clause_node);
+
+    // - 连接的表名: orders
+    ASTNode *orders_table_node = new ASTNode(IDENTIFIER_NODE, "orders");
+    join_clause_node->addChild(orders_table_node);
+
+    // - ON 条件
+    ASTNode *on_condition_node = new ASTNode(ON_CONDITION, "");
+    join_clause_node->addChild(on_condition_node);
+    ASTNode *on_equal_op = new ASTNode(EQUAL_OPERATOR, "");
+    on_equal_op->addChild(new ASTNode(IDENTIFIER_NODE, "users.id"));
+    on_equal_op->addChild(new ASTNode(IDENTIFIER_NODE, "orders.user_id"));
+    on_condition_node->addChild(on_equal_op);
+
+    // 4. WHERE 子句 (作为 SELECT_STMT 的子节点)
+    ASTNode *where_clause_node = new ASTNode(WHERE_CLAUSE, "");
+    select_stmt->addChild(where_clause_node);
+    ASTNode *where_gt_op = new ASTNode(GREATER_THAN_OPERATOR, "");
+    where_gt_op->addChild(new ASTNode(IDENTIFIER_NODE, "users.age"));
+    where_gt_op->addChild(new ASTNode(INTEGER_LITERAL_NODE, 25));
+    where_clause_node->addChild(where_gt_op);
+
+    // 5. GROUP BY 子句
+    ASTNode *group_by_clause_node = new ASTNode(GROUP_BY_CLAUSE, "");
+    select_stmt->addChild(group_by_clause_node);
+    group_by_clause_node->addChild(new ASTNode(IDENTIFIER_NODE, "users.name"));
+
+    // 6. ORDER BY 子句
+    ASTNode *order_by_clause_node = new ASTNode(ORDER_BY_CLAUSE, "");
+    select_stmt->addChild(order_by_clause_node);
+    order_by_clause_node->addChild(new ASTNode(IDENTIFIER_NODE, "orders.order_id")); // 这里忽略 DESC
+
+    return select_stmt;
+}
+
 //
 ASTNode *createMockDeleteAst()
 {
@@ -320,6 +413,51 @@ ASTNode *createMockDeleteAst()
     return delete_stmt;
 }
 
+// Mocks the AST for `UPDATE students SET age = 21 WHERE id = 1;`
+ASTNode *createMockUpdateAst()
+{
+    // Root node (UPDATE_STMT)
+    ASTNode *update_stmt = new ASTNode(UPDATE_STMT, "");
+
+    // Table name node: 'students'
+    ASTNode *table_name_node = new ASTNode(IDENTIFIER_NODE, "users");
+    update_stmt->addChild(table_name_node);
+
+    // SET clause node
+    ASTNode *set_clause_node = new ASTNode(SET_CLAUSE, "");
+    update_stmt->addChild(set_clause_node);
+
+    // Assignment expression: age = 21
+    ASTNode *equal_op_node = new ASTNode(EQUAL_OPERATOR, "");
+    set_clause_node->addChild(equal_op_node);
+
+    // Column name: 'age'
+    ASTNode *age_col_node = new ASTNode(IDENTIFIER_NODE, "name");
+    equal_op_node->addChild(age_col_node);
+
+    // Value: 21
+    ASTNode *age_value_node = new ASTNode(STRING_LITERAL_NODE, "MOLIDIS");
+    equal_op_node->addChild(age_value_node);
+
+    // WHERE clause node
+    ASTNode *where_clause_node = new ASTNode(WHERE_CLAUSE, "");
+    update_stmt->addChild(where_clause_node);
+
+    // Condition expression: id = 1
+    ASTNode *condition_equal_op_node = new ASTNode(EQUAL_OPERATOR, "");
+    where_clause_node->addChild(condition_equal_op_node);
+
+    // Column name in WHERE: 'id'
+    ASTNode *id_col_node = new ASTNode(IDENTIFIER_NODE, "id");
+    condition_equal_op_node->addChild(id_col_node);
+
+    // Value in WHERE: 1
+    ASTNode *id_value_node = new ASTNode(INTEGER_LITERAL_NODE, 1);
+    condition_equal_op_node->addChild(id_value_node);
+
+    return update_stmt;
+}
+
 // 失败语句
 ASTNode *createMockInsertAst_TableDoesNotExist()
 {
@@ -340,5 +478,3 @@ ASTNode *createMockInsertAst_TableDoesNotExist()
 
     return insert_stmt;
 }
-
-
