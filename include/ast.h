@@ -38,7 +38,13 @@ enum ASTNodeType
     
     WHERE_CLAUSE, // 新增
     EQUAL_OPERATOR, // 新增
-    BINARY_EXPR // 二元表达式,value 为操作符类型，如 '=',左右子节点分别为操作数
+    BINARY_EXPR, // 二元表达式,value 为操作符类型，如 '=',左右子节点分别为操作数
+
+    FROM_CLAUSE, // 新增
+    GREATER_THAN_OR_EQUAL_OPERATOR, // 新增
+    GREATER_THAN_OPERATOR, // 新增
+    LESS_THAN_OPERATOR, // 新增
+    LESS_THAN_OR_EQUAL_OPERATOR // 新增
 
 };
 
