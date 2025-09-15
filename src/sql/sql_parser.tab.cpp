@@ -2486,7 +2486,7 @@ ASTNode* parse_sql_string(const std::string& sql) {
     return nullptr;
 }
 
-std::string nodeTypeToString(ASTNodeType type)
+/* std::string nodeTypeToString(ASTNodeType type)
 {
     switch (type)
     {
@@ -2545,9 +2545,8 @@ std::string nodeTypeToString(ASTNodeType type)
     default:
         return "UNKNOWN_NODE";
     }
-}
-// 简单的 AST 打印函数，用于演示
-void print_AST(ASTNode* node, int depth = 0) {
+} */
+/* void print_AST(ASTNode* node, int depth = 0) {
     if (!node)
     {
         return;
@@ -2569,7 +2568,6 @@ void print_AST(ASTNode* node, int depth = 0) {
     {
         std::cout << ": " << std::get<int>(node->value);
     }
-    /* std::cout << std::endl; */
 
     // 打印节点的位置
     std::cout << "  (Line: " << node->location.first_line 
@@ -2580,9 +2578,8 @@ void print_AST(ASTNode* node, int depth = 0) {
     {
         print_AST(child, depth + 1);
     }
-}
-// 主函数 (用于独立测试)
-int main(int argc, char** argv) {
+} */
+/* int main(int argc, char** argv) {
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <input_sql_file>" << std::endl;
         return 1;
@@ -2611,4 +2608,4 @@ int main(int argc, char** argv) {
     }
 
     return result;
-}
+} */

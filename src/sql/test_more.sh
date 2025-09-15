@@ -31,7 +31,7 @@ cleanup() {
 handle_error() {
     echo -e "${RED}错误发生在第 $1 行: 命令 '$2' 执行失败。${NC}"
     # 即使出错也尝试清理
-    cleanup
+    # cleanup
     exit 1
 }
 
