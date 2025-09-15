@@ -40,20 +40,21 @@ enum ASTNodeType
     WHERE_CLAUSE = 14, // where 14
     FROM_CLAUSE = 15,  // from 15
 
-    EQUAL_OPERATOR = 16,                 //= 16
-    GREATER_THAN_OPERATOR = 17,          //> 17
-    LESS_THAN_OPERATOR = 18,             //< 18
-    GREATER_THAN_OR_EQUAL_OPERATOR = 19, //>= 19
-    LESS_THAN_OR_EQUAL_OPERATOR = 20,    //<= 20
-    BINARY_EXPR = 21,                    // 二元表达式,value 为操作符类型，如 '=',左右子节点分别为操作数
+    EQUAL_OPERATOR = 16,                 // =
+    NOT_EQUAL_OPERATOR = 17,             // !=
+    GREATER_THAN_OPERATOR = 18,          // >
+    LESS_THAN_OPERATOR = 19,             // <
+    GREATER_THAN_OR_EQUAL_OPERATOR = 20, // >=
+    LESS_THAN_OR_EQUAL_OPERATOR = 21,    // <=
+    BINARY_EXPR = 22,                    // 二元表达式, value 为操作符类型，如 '=', 左右子节点分别为操作数
 
     // 扩展
-    UPDATE_STMT = 22,
-    SET_CLAUSE = 23,
-    JOIN_CLAUSE = 24,
-    ORDER_BY_CLAUSE = 25,
-    GROUP_BY_CLAUSE = 26,
-    ON_CONDITION = 27,
+    UPDATE_STMT = 23,
+    SET_CLAUSE = 24,
+    JOIN_CLAUSE = 25,
+    ORDER_BY_CLAUSE = 26,
+    GROUP_BY_CLAUSE = 27,
+    ON_CONDITION = 28,
 
 };
 

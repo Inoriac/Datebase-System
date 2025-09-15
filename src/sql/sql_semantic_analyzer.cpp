@@ -104,6 +104,7 @@ void check_where_clause(ASTNode *node, const std::unordered_map<std::string, con
     {
     case BINARY_EXPR:
     case EQUAL_OPERATOR:
+    case NOT_EQUAL_OPERATOR:
     case GREATER_THAN_OPERATOR:
     case LESS_THAN_OPERATOR:
     case GREATER_THAN_OR_EQUAL_OPERATOR:
