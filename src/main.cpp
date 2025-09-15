@@ -279,6 +279,11 @@ static void print_help() {
 int main() {
     // 初始化日志系统
     DatabaseSystem::Log::LogConfig::Initialize();
+    
+    // 确保文件输出已启用
+    DatabaseSystem::Log::LogConfig::SetFileOutput(true);
+    DatabaseSystem::Log::LogConfig::SetLogLevel(DatabaseSystem::Log::LogLevel::DEBUG);
+    
     auto sql_logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
     
     // 初始化异步存储引擎

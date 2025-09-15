@@ -46,8 +46,8 @@ void BPlusTreeLogger::LogTreeStructure(int height, int root_page_id) {
 }
 
 // StorageLogger实现
-StorageLogger::StorageLogger() : Logger("Storage", "logs/storage.log") {
-    SetFileOutput(true);
+StorageLogger::StorageLogger() : Logger("Storage", "") {
+    SetFileOutput(false);  // 禁用文件输出
 }
 
 void StorageLogger::LogPageOperation(const std::string& operation, int page_id, bool success) {
@@ -83,8 +83,8 @@ void StorageLogger::LogDeallocation(int page_id) {
 }
 
 // ExecutionLogger实现
-ExecutionLogger::ExecutionLogger() : Logger("Execution", "logs/execution.log") {
-    SetFileOutput(true);
+ExecutionLogger::ExecutionLogger() : Logger("Execution", "") {
+    SetFileOutput(false);  // 禁用文件输出
 }
 
 void ExecutionLogger::LogQueryPlan(const std::string& query, const std::string& plan) {

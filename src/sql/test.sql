@@ -34,7 +34,8 @@ GROUP BY
 ORDER BY
     orders.order_id;
 
-UPDATE user SET name = 'Alice' WHERE id = 1;
+UPDATE students SET name = 'Steve' WHERE id = 1;
+SELECT * FROM students;
 
 
 /* Additional test cases

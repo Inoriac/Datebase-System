@@ -18,8 +18,20 @@ Logger::Logger(const std::string& name, const std::string& log_file)
     , file_output_(false) {
     
     if (!log_file_.empty()) {
+        // 确保目录存在
+        std::filesystem::path file_path(log_file_);
+        std::filesystem::create_directories(file_path.parent_path());
+        
         file_output_ = true;
         file_stream_ = std::make_unique<std::ofstream>(log_file_, std::ios::app);
+        
+        // 检查文件是否成功打开
+        if (!file_stream_->is_open()) {
+            std::cerr << "Warning: Failed to open log file: " << log_file_ << std::endl;
+            file_output_ = false;
+        } else {
+            std::cerr << "Successfully opened log file: " << log_file_ << std::endl;
+        }
     }
 }
 

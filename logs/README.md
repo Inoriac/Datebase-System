@@ -24,10 +24,10 @@
 
 日志文件按组件分别存储：
 - `logs/bplus_tree.log` - B+树操作日志
-- `logs/storage.log` - 存储层日志
-- `logs/execution.log` - 执行层日志
 - `logs/sql.log` - SQL相关日志
 - `logs/table.log` - 表管理日志
+
+**注意**：存储层和执行层日志仅输出到控制台，不生成文件。
 
 ## 使用方法
 
