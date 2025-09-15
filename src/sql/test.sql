@@ -1,3 +1,6 @@
+/* Test SQL commands for the database system */
+
+
 -- 创建一个学生表
 CREATE TABLE students (id INT, name VARCHAR(50), age INT);
 
@@ -17,9 +20,8 @@ SELECT name FROM students;
 
 SELECT id, name FROM users WHERE id > 100;
 
-
-
-
+/* Additional test cases
+*/
 
 -- CREATE TABLE student(id INT, name VARCHAR, age INT);
 -- INSERT INTO student(id,name,age) VALUES (1,'Alice',20);

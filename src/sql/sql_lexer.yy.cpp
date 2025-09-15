@@ -1,6 +1,6 @@
-#line 2 "sql_lexer.yy.cpp"
+#line 2 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.yy.cpp"
 
-#line 4 "sql_lexer.yy.cpp"
+#line 4 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.yy.cpp"
 
 #define  YY_INT_ALIGNED short int
 
@@ -374,8 +374,8 @@ static void yynoreturn yy_fatal_error ( const char* msg  );
 	(yy_hold_char) = *yy_cp; \
 	*yy_cp = '\0'; \
 	(yy_c_buf_p) = yy_cp;
-#define YY_NUM_RULES 27
-#define YY_END_OF_BUFFER 28
+#define YY_NUM_RULES 31
+#define YY_END_OF_BUFFER 32
 /* This struct is not used in this scanner,
    but its presence is necessary. */
 struct yy_trans_info
@@ -383,16 +383,17 @@ struct yy_trans_info
 	flex_int32_t yy_verify;
 	flex_int32_t yy_nxt;
 	};
-static const flex_int16_t yy_accept[80] =
+static const flex_int16_t yy_accept[88] =
     {   0,
-        0,    0,   28,   26,    1,    2,   26,   26,   24,   25,
-       26,   22,   19,   20,   18,   21,   21,   21,   21,   21,
-       21,   21,   21,   21,    1,    2,   17,    0,   23,    3,
-       22,   16,   15,   21,   21,   21,   21,   21,   21,   21,
-       21,   21,    3,   21,   21,   21,   21,   13,   21,   21,
-       21,   21,   21,   21,   21,    5,   21,   10,   21,   21,
-       21,   21,   21,   21,   21,   21,   21,    8,   21,   21,
-        6,    7,   12,    9,    4,   11,   21,   14,    0
+        0,    0,    0,    0,   32,   30,    5,    6,   30,   30,
+       28,   29,   30,   30,   26,   23,   24,   22,   25,   25,
+       25,   25,   25,   25,   25,   25,   25,    4,    3,    4,
+        5,    6,   21,    0,   27,    7,    1,   26,   20,   19,
+       25,   25,   25,   25,   25,   25,   25,   25,   25,    2,
+        7,   25,   25,   25,   25,   17,   25,   25,   25,   25,
+       25,   25,   25,    9,   25,   14,   25,   25,   25,   25,
+       25,   25,   25,   25,   25,   12,   25,   25,   10,   11,
+       16,   13,    8,   15,   25,   18,    0
     } ;
 
 static const YY_CHAR yy_ec[256] =
@@ -401,16 +402,16 @@ static const YY_CHAR yy_ec[256] =
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    2,    4,    1,    1,    1,    1,    1,    5,    6,
-        6,    7,    1,    6,    8,    1,    1,    9,    9,    9,
-        9,    9,    9,    9,    9,    9,    9,    1,    6,   10,
-       11,   12,    1,    1,   13,   14,   15,   16,   17,   18,
-       19,   20,   21,   19,   19,   22,   23,   24,   25,   19,
-       19,   26,   27,   28,   29,   30,   31,   19,   19,   19,
-        1,    1,    1,    1,   32,    1,   19,   19,   19,   19,
+        6,    7,    1,    6,    8,    1,    9,   10,   10,   10,
+       10,   10,   10,   10,   10,   10,   10,    1,    6,   11,
+       12,   13,    1,    1,   14,   15,   16,   17,   18,   19,
+       20,   21,   22,   20,   20,   23,   24,   25,   26,   20,
+       20,   27,   28,   29,   30,   31,   32,   20,   20,   20,
+        1,    1,    1,    1,   33,    1,   20,   20,   20,   20,
 
-       19,   19,   19,   19,   19,   19,   19,   19,   19,   19,
-       19,   19,   19,   19,   19,   19,   19,   19,   19,   19,
-       19,   19,    1,    1,    1,    1,    1,    1,    1,    1,
+       20,   20,   20,   20,   20,   20,   20,   20,   20,   20,
+       20,   20,   20,   20,   20,   20,   20,   20,   20,   20,
+       20,   20,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
@@ -427,81 +428,87 @@ static const YY_CHAR yy_ec[256] =
         1,    1,    1,    1,    1
     } ;
 
-static const YY_CHAR yy_meta[33] =
+static const YY_CHAR yy_meta[34] =
     {   0,
-        1,    1,    2,    1,    1,    1,    1,    1,    3,    1,
-        1,    1,    3,    3,    3,    3,    3,    3,    3,    3,
+        1,    1,    2,    1,    1,    1,    1,    1,    1,    3,
+        1,    1,    1,    3,    3,    3,    3,    3,    3,    3,
         3,    3,    3,    3,    3,    3,    3,    3,    3,    3,
-        3,    3
+        3,    3,    3
     } ;
 
-static const flex_int16_t yy_base[83] =
+static const flex_int16_t yy_base[92] =
     {   0,
-        0,    0,   95,   96,   92,   90,   81,   86,   96,   96,
-       82,   80,   77,   96,   76,    0,   60,   68,   58,   59,
-       65,   68,   67,   59,   76,   74,   96,   71,   70,    0,
-       65,   96,   96,    0,   56,   50,   46,    6,   48,   55,
-       13,   51,    0,   54,   49,   42,   47,   38,   45,   39,
-       31,   44,   32,   29,   28,    0,   29,    0,   39,   36,
-       35,   31,   33,   32,   31,   19,   18,    0,   17,   25,
-        0,    0,    0,    0,    0,    0,   11,    0,   96,   39,
-       33,   42
+        0,    0,   31,   32,  105,  106,  102,  100,   90,   96,
+      106,  106,   92,   92,   88,   85,  106,   84,    0,   68,
+       76,   66,   67,   73,   76,   75,   67,  106,  106,   78,
+       84,   82,  106,   79,   78,    0,  106,   72,  106,  106,
+        0,   63,   57,   53,    8,   55,   62,   17,   58,  106,
+        0,   61,   56,   49,   54,   45,   52,   46,   38,   51,
+       39,   36,   35,    0,   36,    0,   46,   43,   42,   38,
+       40,   39,   38,   26,   25,    0,   24,   29,    0,    0,
+        0,    0,    0,    0,   15,    0,  106,   44,   47,   38,
+       50
+
     } ;
 
-static const flex_int16_t yy_def[83] =
+static const flex_int16_t yy_def[92] =
     {   0,
-       79,    1,   79,   79,   79,   79,   79,   80,   79,   79,
-       79,   79,   79,   79,   79,   81,   81,   81,   81,   81,
-       81,   81,   81,   81,   79,   79,   79,   80,   79,   82,
-       79,   79,   79,   81,   81,   81,   81,   81,   81,   81,
-       81,   81,   82,   81,   81,   81,   81,   81,   81,   81,
-       81,   81,   81,   81,   81,   81,   81,   81,   81,   81,
-       81,   81,   81,   81,   81,   81,   81,   81,   81,   81,
-       81,   81,   81,   81,   81,   81,   81,   81,    0,   79,
-       79,   79
+       87,    1,   88,   88,   87,   87,   87,   87,   87,   89,
+       87,   87,   87,   87,   87,   87,   87,   87,   90,   90,
+       90,   90,   90,   90,   90,   90,   90,   87,   87,   87,
+       87,   87,   87,   89,   87,   91,   87,   87,   87,   87,
+       90,   90,   90,   90,   90,   90,   90,   90,   90,   87,
+       91,   90,   90,   90,   90,   90,   90,   90,   90,   90,
+       90,   90,   90,   90,   90,   90,   90,   90,   90,   90,
+       90,   90,   90,   90,   90,   90,   90,   90,   90,   90,
+       90,   90,   90,   90,   90,   90,    0,   87,   87,   87,
+       87
+
     } ;
 
-static const flex_int16_t yy_nxt[129] =
+static const flex_int16_t yy_nxt[140] =
     {   0,
-        4,    5,    6,    7,    8,    9,   10,   11,   12,   13,
-       14,   15,   16,   16,   17,   18,   16,   19,   16,   16,
-       20,   16,   16,   16,   16,   16,   21,   22,   16,   23,
-       24,    4,   47,   48,   51,   34,   78,   77,   52,   28,
-       28,   28,   43,   76,   43,   75,   74,   73,   72,   71,
-       70,   69,   68,   67,   66,   65,   64,   63,   62,   61,
-       60,   59,   58,   57,   56,   55,   54,   53,   50,   49,
-       46,   45,   44,   31,   28,   29,   26,   25,   42,   41,
-       40,   39,   38,   37,   36,   35,   33,   32,   31,   30,
-       29,   27,   26,   25,   79,    3,   79,   79,   79,   79,
+        6,    7,    8,    9,   10,   11,   12,   13,   14,   15,
+       16,   17,   18,   19,   19,   20,   21,   19,   22,   19,
+       19,   23,   19,   19,   19,   19,   19,   24,   25,   19,
+       26,   27,    6,   29,   29,   55,   56,   30,   30,   59,
+       41,   86,   85,   60,   28,   28,   28,   34,   34,   34,
+       51,   84,   51,   83,   82,   81,   80,   79,   78,   77,
+       76,   75,   74,   73,   72,   71,   70,   69,   68,   67,
+       66,   65,   64,   63,   62,   61,   58,   57,   54,   53,
+       52,   38,   34,   35,   32,   31,   50,   49,   48,   47,
+       46,   45,   44,   43,   42,   40,   39,   38,   37,   36,
 
-       79,   79,   79,   79,   79,   79,   79,   79,   79,   79,
-       79,   79,   79,   79,   79,   79,   79,   79,   79,   79,
-       79,   79,   79,   79,   79,   79,   79,   79
+       35,   33,   32,   31,   87,    5,   87,   87,   87,   87,
+       87,   87,   87,   87,   87,   87,   87,   87,   87,   87,
+       87,   87,   87,   87,   87,   87,   87,   87,   87,   87,
+       87,   87,   87,   87,   87,   87,   87,   87,   87
     } ;
 
-static const flex_int16_t yy_chk[129] =
+static const flex_int16_t yy_chk[140] =
     {   0,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,   38,   38,   41,   81,   77,   70,   41,   80,
-       80,   80,   82,   69,   82,   67,   66,   65,   64,   63,
-       62,   61,   60,   59,   57,   55,   54,   53,   52,   51,
-       50,   49,   48,   47,   46,   45,   44,   42,   40,   39,
-       37,   36,   35,   31,   29,   28,   26,   25,   24,   23,
-       22,   21,   20,   19,   18,   17,   15,   13,   12,   11,
-        8,    7,    6,    5,    3,   79,   79,   79,   79,   79,
+        1,    1,    1,    3,    4,   45,   45,    3,    4,   48,
+       90,   85,   78,   48,   88,   88,   88,   89,   89,   89,
+       91,   77,   91,   75,   74,   73,   72,   71,   70,   69,
+       68,   67,   65,   63,   62,   61,   60,   59,   58,   57,
+       56,   55,   54,   53,   52,   49,   47,   46,   44,   43,
+       42,   38,   35,   34,   32,   31,   30,   27,   26,   25,
+       24,   23,   22,   21,   20,   18,   16,   15,   14,   13,
 
-       79,   79,   79,   79,   79,   79,   79,   79,   79,   79,
-       79,   79,   79,   79,   79,   79,   79,   79,   79,   79,
-       79,   79,   79,   79,   79,   79,   79,   79
+       10,    9,    8,    7,    5,   87,   87,   87,   87,   87,
+       87,   87,   87,   87,   87,   87,   87,   87,   87,   87,
+       87,   87,   87,   87,   87,   87,   87,   87,   87,   87,
+       87,   87,   87,   87,   87,   87,   87,   87,   87
     } ;
 
 /* Table of booleans, true if rule could match eol. */
-static const flex_int32_t yy_rule_can_match_eol[28] =
+static const flex_int32_t yy_rule_can_match_eol[32] =
     {   0,
-0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
-    0, 0, 0, 1, 0, 0, 0, 0,     };
+0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+    0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,     };
 
 static yy_state_type yy_last_accepting_state;
 static char *yy_last_accepting_cpos;
@@ -517,8 +524,8 @@ int yy_flex_debug = 0;
 #define YY_MORE_ADJ 0
 #define YY_RESTORE_YY_MORE_OFFSET
 char *yytext;
-#line 1 "sql_lexer.l"
-#line 2 "sql_lexer.l"
+#line 1 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+#line 2 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
 #include <string>
 
 /* * 包含 Bison 生成的头文件。
@@ -535,6 +542,9 @@ extern YYLTYPE yylloc; // Bison 提供的位置变量
 // 定义计数器
 static int column_count = 1;
 
+// *** 全局变量存储最近的标识符 ***
+char* last_identifier_text = nullptr;
+
 /* * 定义一个宏，在每次匹配 Token 后自动更新位置信息。
  * Flex 会在执行每个规则的动作代码之前，先执行 YY_USER_ACTION。
  */
@@ -545,10 +555,12 @@ static int column_count = 1;
     yylloc.last_line = yylineno; \
     yylloc.last_column = column_count - 1;
 
-#line 549 "sql_lexer.yy.cpp"
-#line 550 "sql_lexer.yy.cpp"
+#line 559 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.yy.cpp"
+
+#line 561 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.yy.cpp"
 
 #define INITIAL 0
+#define COMMENT 1
 
 #ifndef YY_NO_UNISTD_H
 /* Special case for "unistd.h", since it is non-ANSI. We include it way
@@ -763,10 +775,10 @@ YY_DECL
 		}
 
 	{
-#line 37 "sql_lexer.l"
+#line 42 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
 
 
-#line 770 "sql_lexer.yy.cpp"
+#line 782 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.yy.cpp"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -793,13 +805,13 @@ yy_match:
 			while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
 				{
 				yy_current_state = (int) yy_def[yy_current_state];
-				if ( yy_current_state >= 80 )
+				if ( yy_current_state >= 88 )
 					yy_c = yy_meta[yy_c];
 				}
 			yy_current_state = yy_nxt[yy_base[yy_current_state] + yy_c];
 			++yy_cp;
 			}
-		while ( yy_base[yy_current_state] != 96 );
+		while ( yy_base[yy_current_state] != 106 );
 
 yy_find_action:
 		yy_act = yy_accept[yy_current_state];
@@ -835,108 +847,136 @@ do_action:	/* This label is used only to access EOF actions. */
 
 case 1:
 YY_RULE_SETUP
-#line 39 "sql_lexer.l"
-{ /* 忽略空白 */ }
+#line 44 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ BEGIN(COMMENT); }
 	YY_BREAK
 case 2:
-/* rule 2 can match eol */
 YY_RULE_SETUP
-#line 40 "sql_lexer.l"
-{ column_count = 1; /* 遇到换行，重置列号 */ }
+#line 45 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ BEGIN(INITIAL); }
 	YY_BREAK
 case 3:
+/* rule 3 can match eol */
 YY_RULE_SETUP
-#line 41 "sql_lexer.l"
-{ column_count = 1; /* 注释到行尾，也重置 */ }
+#line 46 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ column_count = 1; /* 注释内的换行也需要重置列号 */ }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 43 "sql_lexer.l"
-{ return K_SELECT; }
+#line 47 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ /* 忽略注释内的所有其他字符 */ }
+	YY_BREAK
+case YY_STATE_EOF(COMMENT):
+#line 48 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ 
+    yyerror("Unterminated block comment"); 
+    BEGIN(INITIAL); // 遇到文件结尾，恢复状态
+}
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 44 "sql_lexer.l"
-{ return K_FROM; }
+#line 53 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ /* 忽略空白 */ }
 	YY_BREAK
 case 6:
+/* rule 6 can match eol */
 YY_RULE_SETUP
-#line 45 "sql_lexer.l"
-{ return K_WHERE; }
+#line 54 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ column_count = 1; /* 遇到换行，重置列号 */ }
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 46 "sql_lexer.l"
-{ return K_CREATE; }
+#line 55 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ column_count = 1; /* 注释到行尾，也重置 */ }
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 47 "sql_lexer.l"
-{ return K_TABLE; }
+#line 57 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return K_SELECT; }
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 48 "sql_lexer.l"
-{ return K_INSERT; }
+#line 58 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return K_FROM; }
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 49 "sql_lexer.l"
-{ return K_INTO; }
+#line 59 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return K_WHERE; }
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 50 "sql_lexer.l"
-{ return K_VALUES; }
+#line 60 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return K_CREATE; }
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 51 "sql_lexer.l"
-{ return K_DELETE; }
+#line 61 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return K_TABLE; }
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 52 "sql_lexer.l"
-{ return K_INT; }
+#line 62 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return K_INSERT; }
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 53 "sql_lexer.l"
-{ return K_VARCHAR; }
+#line 63 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return K_INTO; }
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 55 "sql_lexer.l"
-{ return OP_GTE; }
+#line 64 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return K_VALUES; }
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 56 "sql_lexer.l"
-{ return OP_LTE; }
+#line 65 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return K_DELETE; }
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 57 "sql_lexer.l"
-{ return OP_NEQ; }
+#line 66 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return K_INT; }
 	YY_BREAK
 case 18:
 YY_RULE_SETUP
-#line 58 "sql_lexer.l"
-{ return OP_GT; }
+#line 67 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return K_VARCHAR; }
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 59 "sql_lexer.l"
-{ return OP_LT; }
+#line 69 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return OP_GTE; }
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 60 "sql_lexer.l"
-{ return OP_EQ; }
+#line 70 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return OP_LTE; }
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 62 "sql_lexer.l"
+#line 71 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return OP_NEQ; }
+	YY_BREAK
+case 22:
+YY_RULE_SETUP
+#line 72 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return OP_GT; }
+	YY_BREAK
+case 23:
+YY_RULE_SETUP
+#line 73 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return OP_LT; }
+	YY_BREAK
+case 24:
+YY_RULE_SETUP
+#line 74 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
+{ return OP_EQ; }
+	YY_BREAK
+case 25:
+YY_RULE_SETUP
+#line 76 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
 {
     /* * 识别标识符：
     * 1. 将匹配到的字符串 yytext 复制一份 (因为 yytext 是内部缓冲区，很快会被覆盖)。
@@ -944,13 +984,20 @@ YY_RULE_SETUP
     * 2. 将复制后的字符串指针存入 yylval.str_val。
     * 3. 返回 IDENTIFIER Token 类型。
     */
+
+    // *** 更新全局变量用以智能纠错 ***
+    if (last_identifier_text) {
+        free(last_identifier_text);
+    }
+    last_identifier_text = strdup(yytext);
+
     yylval.str_val = strdup(yytext);
     return IDENTIFIER;
 }
 	YY_BREAK
-case 22:
+case 26:
 YY_RULE_SETUP
-#line 74 "sql_lexer.l"
+#line 95 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
 {
     /* * 识别整型常量：
     * 1. 使用 atoi 将字符串转换为整数。
@@ -961,19 +1008,19 @@ YY_RULE_SETUP
     return INTEGER_CONST;
 }
 	YY_BREAK
-case 23:
-/* rule 23 can match eol */
+case 27:
+/* rule 27 can match eol */
 YY_RULE_SETUP
-#line 84 "sql_lexer.l"
+#line 105 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
 {
     /* 识别字符串常量，处理方式与标识符类似 */
     yylval.str_val = strdup(yytext);
     return STRING_CONST;
 }
 	YY_BREAK
-case 24:
+case 28:
 YY_RULE_SETUP
-#line 90 "sql_lexer.l"
+#line 111 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
 { 
     /* * 对于单字符的分隔符，Bison可以直接使用它们的ASCII值作为Token类型。
     * 所以我们直接返回这个字符
@@ -981,17 +1028,17 @@ YY_RULE_SETUP
     return yytext[0]; 
 }
 	YY_BREAK
-case 25:
+case 29:
 YY_RULE_SETUP
-#line 96 "sql_lexer.l"
+#line 117 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
 {
     /* 对于*,直接返回* */
     return yytext[0];
 }
 	YY_BREAK
-case 26:
+case 30:
 YY_RULE_SETUP
-#line 101 "sql_lexer.l"
+#line 122 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
 { 
     /* 遇到无法识别的字符 */
     std::string err_msg = "Unrecognized character: ";
@@ -999,12 +1046,12 @@ YY_RULE_SETUP
     yyerror(err_msg.c_str());
 }
 	YY_BREAK
-case 27:
+case 31:
 YY_RULE_SETUP
-#line 108 "sql_lexer.l"
+#line 129 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
 ECHO;
 	YY_BREAK
-#line 1008 "sql_lexer.yy.cpp"
+#line 1055 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.yy.cpp"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -1301,7 +1348,7 @@ static int yy_get_next_buffer (void)
 		while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
 			{
 			yy_current_state = (int) yy_def[yy_current_state];
-			if ( yy_current_state >= 80 )
+			if ( yy_current_state >= 88 )
 				yy_c = yy_meta[yy_c];
 			}
 		yy_current_state = yy_nxt[yy_base[yy_current_state] + yy_c];
@@ -1329,11 +1376,11 @@ static int yy_get_next_buffer (void)
 	while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
 		{
 		yy_current_state = (int) yy_def[yy_current_state];
-		if ( yy_current_state >= 80 )
+		if ( yy_current_state >= 88 )
 			yy_c = yy_meta[yy_c];
 		}
 	yy_current_state = yy_nxt[yy_base[yy_current_state] + yy_c];
-	yy_is_jam = (yy_current_state == 79);
+	yy_is_jam = (yy_current_state == 87);
 
 		return yy_is_jam ? 0 : yy_current_state;
 }
@@ -2021,5 +2068,5 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 108 "sql_lexer.l"
+#line 129 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_lexer.l"
 

@@ -1,92 +1,59 @@
 #!/bin/bash
+# 该脚本专门用于测试词法分析器 (Flex) 和语法分析器 (Bison) 的集成。
+# 它会编译一个不包含语义分析等其他业务逻辑的最小化可执行程序。
 
-# --- 脚本设置 ---
-# set -e: 当任何命令失败时立即退出脚本
-# set -u: 尝试使用未定义的变量时报错
-set -eu
+set -e # 任何命令失败则立即退出
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-# --- 文件名定义 ---
-# 源文件
-LEXER_FILE="sql_lexer.l"
-PARSER_FILE="sql_parser.y"
-TEST_SQL_FILE="test.sql"
-
-# 获取脚本所在的目录，也就是项目根目录
-PROJECT_ROOT=$(dirname "$(realpath "$0")")
-PROJECT_ROOT="$PROJECT_ROOT/../.."
+PROJECT_ROOT=$(pwd)
+PROJECT_ROOT=${PROJECT_ROOT%/src/sql}
+SRC_DIR="$PROJECT_ROOT/src/sql"
 INCLUDE_DIR="$PROJECT_ROOT/include"
-
 BUILD_DIR="$PROJECT_ROOT/build"
-EXECUTABLE_NAME="sql_test"
-
-# 由工具生成的文件
-PARSER_CPP="sql_parser.tab.cpp"
-PARSER_HPP="sql_parser.tab.hpp" 
-LEXER_CPP="sql_lexer.yy.cpp"
-TARGET_EXEC="sql_parser"
+EXECUTABLE_NAME="parser_unit_test" # 为这个测试程序专门命名
+TEST_SQL_FILE="$SRC_DIR/test.sql"
 
 # --- 清理函数 ---
-# 这个函数负责删除所有在编译过程中产生的临时文件
 cleanup() {
-  echo "--- 正在清理生成的临时文件... ---"
-  # rm -f: -f 表示强制删除，即使文件不存在也不报错
-  rm -f "$PARSER_CPP" "$LEXER_CPP" "$TARGET_EXEC"
+    echo -e "${YELLOW}--- 清理临时文件... ---${NC}"
+    rm -f "$SRC_DIR/sql_lexer.yy.cpp" "$SRC_DIR/sql_parser.tab.cpp" "$SRC_DIR/sql_parser.tab.hpp"
 }
+# 设置陷阱，在脚本退出或出错时自动调用 cleanup
+# trap 'cleanup' EXIT
 
-# --- 核心：设置陷阱 (trap) ---
-# trap ... EXIT: 这条命令注册了一个“陷阱”。
-# 无论脚本是正常结束，还是因为错误中断，或者被用户Ctrl+C终止，
-# EXIT 信号都会被触发，从而执行 cleanup 函数。
-# 这是确保目录干净的最可靠方法。
-# trap cleanup EXIT
+# --- 主流程 ---
 
-# --- 编译步骤 ---
-echo "--- 1. 检查所需文件... ---"
-# 检查源文件是否存在
-if [ ! -f "$LEXER_FILE" ] || [ ! -f "$PARSER_FILE" ] || [ ! -f "$TEST_SQL_FILE" ]; then
-    echo "错误：缺少必要的源文件!"
-    echo "请确保 '$LEXER_FILE', '$PARSER_FILE', 和 '$TEST_SQL_FILE' 都在当前目录下。"
-    exit 1
-fi
+echo -e "${YELLOW}--- 1. 准备构建环境... ---${NC}"
+mkdir -p "$BUILD_DIR"
 
-echo "--- 2. 使用 Bison 编译语法文件 ($PARSER_FILE)... ---"
-# -d: 生成头文件(.hpp), -o: 指定输出的.cpp文件名
-bison -d -o "$PARSER_CPP" "$PARSER_FILE"
+echo -e "${YELLOW}--- 2. 调用 Bison 生成解析器代码... ---${NC}"
+bison -d -o "$SRC_DIR/sql_parser.tab.cpp" "$SRC_DIR/sql_parser.y"
 
-echo "--- 3. 使用 Flex 编译词法文件 ($LEXER_FILE)... ---"
-# -o: 指定输出的.cpp文件名
-flex -o "$LEXER_CPP" "$LEXER_FILE"
+echo -e "${YELLOW}--- 3. 调用 Flex 生成词法分析器代码... ---${NC}"
+flex -o "$SRC_DIR/sql_lexer.yy.cpp" "$SRC_DIR/sql_lexer.l"
 
-# echo "--- 4. 使用 g++ 编译链接 C++ 代码... ---"
-# # -lfl: 链接 flex 库，这是运行 flex 生成的代码所必需的
+echo -e "${YELLOW}--- 4. 编译并链接一个最小化的测试程序... ---${NC}"
+# *** 核心修改: 移除了 "$SRC_DIR/main.cpp" ***
 g++ -std=c++17 -g \
     -I"$INCLUDE_DIR" \
-    "main.cpp" \
-    "sql_parser.tab.cpp" \
-    "sql_lexer.yy.cpp" \
-    "sql_semantic_analyzer.cpp" \
-    "symbol_table.cpp" \
+    "$SRC_DIR/sql_parser.tab.cpp" \
+    "$SRC_DIR/sql_lexer.yy.cpp" \
     -o "$BUILD_DIR/$EXECUTABLE_NAME"
 
-# # --- 运行步骤 ---
-# echo "--- 5. 运行解析器，测试文件 ($TEST_SQL_FILE)... ---"
-# echo "--- 解析器输出如下: ---"
-# # 将测试SQL文件作为参数传递给生成的可执行程序
-# ./"$TARGET_EXEC" "$TEST_SQL_FILE"
-# echo "--------------------------"
+echo -e "${GREEN}最小化编译成功！可执行文件位于: $BUILD_DIR/$EXECUTABLE_NAME${NC}"
 
-# 5. 运行可执行文件
-echo -e "--- 5. 运行解析器，测试文件 ($TEST_SQL_FILE)... ---"
+# --- 自动运行测试 ---
+echo -e "${YELLOW}--- 5. 自动运行测试... ---${NC}"
 if [ ! -f "$TEST_SQL_FILE" ]; then
-    echo -e "测试文件 '$TEST_SQL_FILE' 未找到"
-    exit 1
+    echo -e "${RED}测试文件 '$TEST_SQL_FILE' 未找到！${NC}"
+else
+    echo "--- 解析器输出: ---"
+    "$BUILD_DIR/$EXECUTABLE_NAME" "$TEST_SQL_FILE"
+    echo "-------------------"
 fi
 
-echo "--- 解析器输出如下: ---"
-"$BUILD_DIR/$EXECUTABLE_NAME" "$TEST_SQL_FILE"
-echo "--------------------------"
+echo -e "${GREEN}解析器单元测试执行完毕。${NC}"
 
-
-# --- 结束 ---
-# 脚本将在这里正常退出，然后 trap 会自动调用 cleanup 函数
-echo "--- 测试脚本执行完毕。 ---"

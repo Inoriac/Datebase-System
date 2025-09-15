@@ -1,5 +1,5 @@
 #include "ast.h"
-#include "symbol_table.h"
+// #include "symbol_table.h"
 #include "sql_semantic_analyzer.h" // 假设这是你的语义分析函数声明文件
 #include "plan_generator.h"        // 执行计划生成器
 #include "executor.h"              // 执行器
