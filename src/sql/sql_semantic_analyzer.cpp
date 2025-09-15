@@ -1,12 +1,20 @@
 #include "ast.h"
 #include "symbol_table.h"
-#include "semantic_error.h" // 包含自定义异常类
+#include "semantic_error.h"
 #include <iostream>
 #include <unordered_set>
 #include <string>
 #include <variant>
+#include <unordered_map>
+#include "utils.h"
 
-// 辅助函数：检查AST节点值类型和表列类型是否匹配
+// 打印当前正在解析的语句的AST结构
+void printCurrentStatementAST(ASTNode *statement_node)
+{
+    std::cout << "\n--- 正在解析的AST ---\n";
+    printAST(statement_node);
+    std::cout << "---------------------\n\n";
+}
 bool typesMatch(const ASTNode *value_node, const std::string &column_type)
 {
     if (value_node->type == INTEGER_LITERAL_NODE && (column_type == "INT" || column_type == "INTEGER"))
@@ -19,72 +27,86 @@ bool typesMatch(const ASTNode *value_node, const std::string &column_type)
     }
     return false;
 }
-// 辅助函数
-void check_where_clause(ASTNode *node, const TableInfo &table_info)
+
+void check_column_exists(ASTNode *node, const std::unordered_map<std::string, const TableInfo *> &tables)
 {
-    if (!node)
-        return;
-
-    // 如果是比较操作符节点（>，<，=等）
-    if (node->type == GREATER_THAN_OPERATOR || node->type == LESS_THAN_OPERATOR ||
-        node->type == EQUAL_OPERATOR || node->type == GREATER_THAN_OR_EQUAL_OPERATOR ||
-        node->type == LESS_THAN_OR_EQUAL_OPERATOR)
+    if (node->type != IDENTIFIER_NODE)
     {
+        throw SemanticError(SemanticError::SYNTAX_ERROR, "Expected an IDENTIFIER_NODE.");
+    }
 
-        // 检查左侧操作数（通常是列名）
-        ASTNode *left_operand = node->children[0];
-        ASTNode *right_operand = node->children[0];
-        // 左侧操作数为列名 看他类型是否为标志赴
-        if (left_operand->type == IDENTIFIER_NODE)
+    std::string col_name = std::get<std::string>(node->value);
+
+    size_t dot_pos = col_name.find('.');
+    std::string table_alias = "";
+    std::string pure_col_name = col_name;
+
+    if (dot_pos != std::string::npos)
+    {
+        table_alias = col_name.substr(0, dot_pos);
+        pure_col_name = col_name.substr(dot_pos + 1);
+    }
+
+    bool column_found = false;
+    for (const auto &pair : tables)
+    {
+        const std::string &current_table_name = pair.first;
+        const TableInfo *table_info = pair.second;
+
+        if (!table_alias.empty() && table_alias != current_table_name)
         {
-            std::string col_name = std::get<std::string>(left_operand->value);
-            // 看这个列是否存在
-            if (table_info.columns.count(col_name) == 0)
-            {
-                throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + col_name + "' does not exist in the table.");
-            }
-            std::string col_type = table_info.columns.at(col_name).type;
-
-            // 2. 检查右侧操作数（值）
-            std::string value_type;
-            if (right_operand->type == INTEGER_LITERAL_NODE)
-            {
-                value_type = "INT";
-            }
-            else if (right_operand->type == STRING_LITERAL_NODE)
-            {
-                value_type = "STRING";
-            }
-            else if (right_operand->type == IDENTIFIER_NODE)
-            {
-                // 如果右侧也是一个列名，需要检查它是否存在并获取类型
-                // WHERE salary > bonus 比较两列的值 ()
-                // todo 功能
-                std::string right_col_name = std::get<std::string>(right_operand->value);
-                if (table_info.columns.count(right_col_name) == 0)
-                {
-                    throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + right_col_name + "' does not exist in the table.");
-                }
-                value_type = table_info.columns.at(right_col_name).type;
-            }
-            else
-            {
-                throw SemanticError(SemanticError::SYNTAX_ERROR, "Unsupported operand type in WHERE clause.");
-            }
-
-            // 3. 比较类型是否兼容
-            if (col_type != value_type)
-            {
-                throw SemanticError(SemanticError::TYPE_MISMATCH, "Cannot compare column '" + col_name + "' (" + col_type + ") with value of type " + value_type + ".");
-            }
+            continue;
         }
 
-        // 递归检查右侧操作数（可能是另一个列名或常量）
-        check_where_clause(node->children[1], table_info);
+        if (table_info->columns.count(pure_col_name) > 0)
+        {
+            column_found = true;
+            break;
+        }
+    }
+
+    if (!column_found)
+    {
+        throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + col_name + "' does not exist in the specified tables.");
+    }
+}
+void check_where_clause(ASTNode *node, const std::unordered_map<std::string, const TableInfo *> &tables)
+{
+    if (!node)
+    {
+        return;
+    }
+
+    switch (node->type)
+    {
+    case BINARY_EXPR:
+    case EQUAL_OPERATOR:
+    case GREATER_THAN_OPERATOR:
+    case LESS_THAN_OPERATOR:
+    case GREATER_THAN_OR_EQUAL_OPERATOR:
+    case LESS_THAN_OR_EQUAL_OPERATOR:
+        if (node->children.size() != 2)
+        {
+            throw SemanticError(SemanticError::SYNTAX_ERROR, "Malformed binary expression.");
+        }
+        check_where_clause(node->children[0], tables);
+        check_where_clause(node->children[1], tables);
+        break;
+
+    case IDENTIFIER_NODE:
+        check_column_exists(node, tables);
+        break;
+
+    case INTEGER_LITERAL_NODE:
+    case STRING_LITERAL_NODE:
+    case DATA_TYPE_NODE:
+        break;
+
+    default:
+        throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid node type in WHERE clause.");
     }
 }
 
-// 检查 CREATE TABLE 语句
 void check_create_statement(ASTNode *statement_node)
 {
     if (statement_node->children.size() < 2)
@@ -108,7 +130,9 @@ void check_create_statement(ASTNode *statement_node)
     {
         if (col_node->type != IDENTIFIER_NODE || col_node->children.empty())
         {
+            std::cout << "man.\n";
             throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid column definition. Expected an IDENTIFIER_NODE with a type child.");
+            std::cout << "man.\n";
         }
 
         std::string col_name = std::get<std::string>(col_node->value);
@@ -135,7 +159,6 @@ void check_create_statement(ASTNode *statement_node)
     std::cout << "Semantic check passed for CREATE TABLE '" << table_name << "'.\n";
 }
 
-// 检查 INSERT 语句
 void check_insert_statement(ASTNode *statement_node)
 {
     if (statement_node->children.size() < 2)
@@ -151,8 +174,8 @@ void check_insert_statement(ASTNode *statement_node)
         throw SemanticError(SemanticError::TABLE_NOT_FOUND, "Table '" + table_name + "' does not exist.");
     }
     const TableInfo &table_info = catalog.getTable(table_name);
-    size_t value_count = values_list_node->children.size(); // 2
-    size_t column_count = table_info.column_order.size();   // 3
+    size_t value_count = values_list_node->children.size();
+    size_t column_count = table_info.column_order.size();
     if (value_count != column_count)
     {
         throw SemanticError(SemanticError::TYPE_MISMATCH, "Value count (" + std::to_string(value_count) + ") does not match column count (" + std::to_string(column_count) + ") in table '" + table_name + "'.");
@@ -176,7 +199,6 @@ void check_insert_statement(ASTNode *statement_node)
     std::cout << "Semantic check passed for INSERT INTO '" + table_name + "'.\n";
 }
 
-// 检查 SELECT 语句
 void check_select_statement(ASTNode *statement_node)
 {
     if (statement_node->children.size() < 2)
@@ -189,85 +211,193 @@ void check_select_statement(ASTNode *statement_node)
     {
         throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid FROM clause. Expected a table name.");
     }
+
+    std::unordered_map<std::string, const TableInfo *> available_tables;
     std::string table_name = std::get<std::string>(from_node->value);
 
     if (!catalog.tableExists(table_name))
     {
         throw SemanticError(SemanticError::TABLE_NOT_FOUND, "Table '" + table_name + "' does not exist.");
     }
-    const TableInfo &table_info = catalog.getTable(table_name);
+    available_tables[table_name] = &catalog.getTable(table_name);
 
-    if (statement_node->children[2])
+    if (!from_node->children.empty())
     {
-        // 中间节点 遍历中间节点 一个节点三个属性 id(列名) >(操作符) 8(value)
+        for (ASTNode *join_node : from_node->children)
+        {
+            if (join_node->type != JOIN_CLAUSE)
+                continue;
+
+            if (join_node->children.empty())
+            {
+                throw SemanticError(SemanticError::SYNTAX_ERROR, "JOIN子句结构不完整。");
+            }
+
+            std::string joined_table_name = std::get<std::string>(join_node->children[0]->value);
+            if (!catalog.tableExists(joined_table_name))
+            {
+                throw SemanticError(SemanticError::TABLE_NOT_FOUND, "连接的表 '" + joined_table_name + "' 不存在。");
+            }
+            available_tables[joined_table_name] = &catalog.getTable(joined_table_name);
+
+            if (join_node->children.size() > 1)
+            {
+                ASTNode *on_condition_node = join_node->children[1];
+                if (on_condition_node->type != ON_CONDITION || on_condition_node->children.empty())
+                {
+                    throw SemanticError(SemanticError::SYNTAX_ERROR, "JOIN条件'ON'无效。");
+                }
+                check_where_clause(on_condition_node->children[0], available_tables);
+            }
+            else
+            {
+                throw SemanticError(SemanticError::SYNTAX_ERROR, "JOIN子句缺少ON条件。");
+            }
+        }
+    }
+
+    for (size_t i = 2; i < statement_node->children.size(); ++i)
+    {
+        ASTNode *clause_node = statement_node->children[i];
+
+        switch (clause_node->type)
+        {
+        case WHERE_CLAUSE:
+            if (!clause_node->children.empty())
+            {
+                check_where_clause(clause_node->children[0], available_tables);
+            }
+            break;
+        case GROUP_BY_CLAUSE:
+            for (ASTNode *col_node : clause_node->children)
+            {
+                check_column_exists(col_node, available_tables);
+            }
+            break;
+        case ORDER_BY_CLAUSE:
+            for (ASTNode *col_node : clause_node->children)
+            {
+                check_column_exists(col_node, available_tables);
+            }
+            break;
+        default:
+            throw SemanticError(SemanticError::SYNTAX_ERROR, "SELECT语句中存在无法识别的子句。");
+        }
+    }
+
+    for (ASTNode *col_node : select_list_node->children)
+    {
+        check_column_exists(col_node, available_tables);
+    }
+
+    std::cout << "Semantic check passed for SELECT statement.\n";
+}
+
+void check_delete_statement(ASTNode *statement_node)
+{
+    std::unordered_map<std::string, const TableInfo *> available_tables;
+
+    if (statement_node->children.size() < 1)
+    {
+        throw SemanticError(SemanticError::SYNTAX_ERROR, "Malformed DELETE statement AST.");
+    }
+
+    ASTNode *table_name_node = statement_node->children[0];
+    if (table_name_node->type != FROM_CLAUSE)
+    {
+        throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid Table clause. Expected a table name.");
+    }
+    std::string table_name = std::get<std::string>(table_name_node->value);
+
+    if (!catalog.tableExists(table_name))
+    {
+        throw SemanticError(SemanticError::TABLE_NOT_FOUND, "Table '" + table_name + "' does not exist.");
+    }
+
+    available_tables[table_name] = &catalog.getTable(table_name);
+
+    if (statement_node->children.size() > 1)
+    {
+        ASTNode *where_clause_node = statement_node->children[1];
+        if (where_clause_node->type != WHERE_CLAUSE)
+        {
+            throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid WHERE clause.");
+        }
+        check_where_clause(where_clause_node->children[0], available_tables);
+    }
+    std::cout << "Semantic check passed for DELETE TABLE '" << table_name << "'.\n";
+}
+
+void check_update_statement(ASTNode *statement_node)
+{
+    std::unordered_map<std::string, const TableInfo *> available_tables;
+
+    if (statement_node->children.size() < 2)
+    {
+        throw SemanticError(SemanticError::SYNTAX_ERROR, "Malformed UPDATE statement AST.");
+    }
+
+    ASTNode *table_name_node = statement_node->children[0];
+    if (table_name_node->type != IDENTIFIER_NODE)
+    {
+        throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid Table clause. Expected a table name.");
+    }
+    std::string table_name = std::get<std::string>(table_name_node->value);
+
+    if (!catalog.tableExists(table_name))
+    {
+        throw SemanticError(SemanticError::TABLE_NOT_FOUND, "Table '" + table_name + "' does not exist.");
+    }
+    available_tables[table_name] = &catalog.getTable(table_name);
+
+    ASTNode *set_node = statement_node->children[1];
+    if (set_node->type != SET_CLAUSE)
+    {
+        throw SemanticError(SemanticError::SYNTAX_ERROR, "Malformed UPDATE statement. Expected SET clause.");
+    }
+
+    for (ASTNode *assignment_node : set_node->children)
+    {
+        if (assignment_node->children.size() != 2 || assignment_node->type != EQUAL_OPERATOR)
+        {
+            throw SemanticError(SemanticError::SYNTAX_ERROR, "Malformed SET clause. Expected assignments.");
+        }
+        ASTNode *col_set_node = assignment_node->children[0];
+        ASTNode *value_node = assignment_node->children[1];
+
+        if (col_set_node->type != IDENTIFIER_NODE)
+        {
+            throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid column in SET clause.");
+        }
+
+        std::string col_name = std::get<std::string>(col_set_node->value);
+        check_column_exists(col_set_node, available_tables);
+
+        const TableInfo &table_info = *available_tables.at(table_name);
+        if (table_info.columns.count(col_name) == 0)
+        {
+            throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + col_name + "' does not exist in table '" + table_name + "'.");
+        }
+
+        const ColumnInfo &col_info = table_info.columns.at(col_name);
+        if (!typesMatch(value_node, col_info.type))
+        {
+            throw SemanticError(SemanticError::TYPE_MISMATCH, "Type mismatch in SET clause for column '" + col_name + "'.");
+        }
+    }
+
+    if (statement_node->children.size() > 2)
+    {
         ASTNode *where_clause_node = statement_node->children[2];
         if (where_clause_node->type != WHERE_CLAUSE)
         {
             throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid WHERE clause.");
         }
-        // 递归检查 WHERE 子句中的所有列名
-        check_where_clause(where_clause_node->children[0], table_info);
+        check_where_clause(where_clause_node->children[0], available_tables);
     }
-
-    for (ASTNode *col_node : select_list_node->children)
-    {
-        if (col_node->type != IDENTIFIER_NODE)
-        {
-            throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid column in SELECT list. Expected a column name.");
-        }
-        std::string col_name = std::get<std::string>(col_node->value);
-        if (table_info.columns.count(col_name) == 0)
-        {
-            throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + col_name + "' does not exist in table '" + table_name + "'.");
-        }
-    }
-    std::cout << "Semantic check passed for SELECT statement.\n";
+    std::cout << "Semantic check passed for UPDATE statement.\n";
 }
 
-// 检查 DELETE 语句
-void check_delete_statement(ASTNode *statement_node)
-{
-    if (statement_node->children.size() < 2)
-    {
-        throw SemanticError(SemanticError::SYNTAX_ERROR, "Malformed DELETE statement AST.");
-    }
-    ASTNode *from_node = statement_node->children[0];
-    ASTNode *where_node = statement_node->children[1];
-    if (from_node->type != FROM_CLAUSE)
-    {
-        std::cout << from_node->type << "\n";
-        throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid FROM clause. Expected a table name.");
-    }
-    std::string table_name = std::get<std::string>(from_node->value);
-
-    if (!catalog.tableExists(table_name))
-    {
-        throw SemanticError(SemanticError::TABLE_NOT_FOUND, "Table '" + table_name + "' does not exist.");
-    }
-    const TableInfo &table_info = catalog.getTable(table_name);
-
-    ASTNode *col_node = where_node->children[0]->children[0];
-    ASTNode *value_node = where_node->children[0]->children[1];
-    if (col_node->type != IDENTIFIER_NODE)
-    {
-        throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid column in WHERE clause.");
-    }
-    std::string col_name = std::get<std::string>(col_node->value);
-
-    if (table_info.columns.count(col_name) == 0)
-    {
-        throw SemanticError(SemanticError::COLUMN_NOT_FOUND, "Column '" + col_name + "' does not exist in table '" + table_name + "'.");
-    }
-    const ColumnInfo &col_info = table_info.columns.at(col_name);
-
-    if (!typesMatch(value_node, col_info.type))
-    {
-        throw SemanticError(SemanticError::TYPE_MISMATCH, "Type mismatch in WHERE clause for column '" + col_name + "'.");
-    }
-    std::cout << "Semantic check passed for DELETE statement.\n";
-}
-
-// 主语义分析入口
 void semantic_analysis(ASTNode *root_node)
 {
     if (!root_node)
@@ -277,6 +407,7 @@ void semantic_analysis(ASTNode *root_node)
     std::cout << "--- 正在语义分析 ---\n";
     for (ASTNode *statement_node : root_node->children)
     {
+        printCurrentStatementAST(statement_node);
         try
         {
             switch (statement_node->type)
@@ -297,14 +428,15 @@ void semantic_analysis(ASTNode *root_node)
                 check_delete_statement(statement_node);
                 std::cout << "--- check_delete_statement语义分析通过 ---\n";
                 break;
+            case UPDATE_STMT:
+                check_update_statement(statement_node);
+                std::cout << "--- check_update_statement语义分析通过 ---\n";
+                break;
             }
         }
         catch (const SemanticError &e)
         {
             std::cerr << "语义分析失败: " << e.what() << " (错误类型: " << e.getType() << ":" << e.getErrorDescription() << ")\n";
-            // 可以在这里添加位置信息，但需要AST节点包含行/列号
-            // 例如：std::cerr << "位置: Line " << statement_node->line << "\n";
-            // 停止对剩余语句的分析
             return;
         }
         catch (const std::exception &e)
