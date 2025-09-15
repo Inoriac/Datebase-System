@@ -18,7 +18,21 @@ DELETE FROM students WHERE age > 21;
 -- 再次查询所有学生
 SELECT name FROM students;
 
-SELECT id, name FROM users WHERE id > 100;
+SELECT
+    users.name,
+    orders.order_id
+FROM
+    users
+JOIN
+    orders
+ON
+    users.id = orders.user_id
+WHERE
+    users.age > 25
+GROUP BY
+    users.name
+ORDER BY
+    orders.order_id;
 
 UPDATE user SET name = 'Alice' WHERE id = 1;
 

@@ -73,14 +73,21 @@ extern int yydebug;
     K_FROM = 267,                  /* K_FROM  */
     K_WHERE = 268,                 /* K_WHERE  */
     K_DELETE = 269,                /* K_DELETE  */
-    K_INT = 270,                   /* K_INT  */
-    K_VARCHAR = 271,               /* K_VARCHAR  */
-    OP_EQ = 272,                   /* OP_EQ  */
-    OP_LT = 273,                   /* OP_LT  */
-    OP_GT = 274,                   /* OP_GT  */
-    OP_LTE = 275,                  /* OP_LTE  */
-    OP_GTE = 276,                  /* OP_GTE  */
-    OP_NEQ = 277                   /* OP_NEQ  */
+    K_UPDATE = 270,                /* K_UPDATE  */
+    K_SET = 271,                   /* K_SET  */
+    K_INT = 272,                   /* K_INT  */
+    K_VARCHAR = 273,               /* K_VARCHAR  */
+    K_JOIN = 274,                  /* K_JOIN  */
+    K_ON = 275,                    /* K_ON  */
+    K_GROUP = 276,                 /* K_GROUP  */
+    K_BY = 277,                    /* K_BY  */
+    K_ORDER = 278,                 /* K_ORDER  */
+    OP_EQ = 279,                   /* OP_EQ  */
+    OP_LT = 280,                   /* OP_LT  */
+    OP_GT = 281,                   /* OP_GT  */
+    OP_LTE = 282,                  /* OP_LTE  */
+    OP_GTE = 283,                  /* OP_GTE  */
+    OP_NEQ = 284                   /* OP_NEQ  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -95,7 +102,7 @@ union YYSTYPE
     char* str_val;
     ASTNode* node; 
 
-#line 99 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.hpp"
+#line 106 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;

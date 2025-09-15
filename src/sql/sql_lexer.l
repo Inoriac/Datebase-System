@@ -63,8 +63,16 @@ ID_CHAR  [a-zA-Z0-9_]
 <INITIAL>"INTO"                  { return K_INTO; }
 <INITIAL>"VALUES"                { return K_VALUES; }
 <INITIAL>"DELETE"                { return K_DELETE; }
+<INITIAL>"UPDATE"                { return K_UPDATE; }  
+<INITIAL>"SET"                   { return K_SET; }    
 <INITIAL>"INT"                   { return K_INT; }
 <INITIAL>"VARCHAR"               { return K_VARCHAR; }
+<INITIAL>"JOIN"                  { return K_JOIN; }   
+<INITIAL>"ON"                    { return K_ON; }
+<INITIAL>"GROUP"                 { return K_GROUP; }  
+<INITIAL>"BY"                    { return K_BY; }     
+<INITIAL>"ORDER"                 { return K_ORDER; }
+
 
 <INITIAL>">="                    { return OP_GTE; }
 <INITIAL>"<="                    { return OP_LTE; }
@@ -118,6 +126,8 @@ ID_CHAR  [a-zA-Z0-9_]
     /* 对于*,直接返回* */
     return yytext[0];
 }
+
+<INITIAL>"." { return yytext[0]; }
 
 <INITIAL>.                       { 
     /* 遇到无法识别的字符 */

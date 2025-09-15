@@ -59,17 +59,26 @@ ParserState current_parser_state = STATE_EXPECTING_COMMAND;
 %token K_INSERT K_INTO K_VALUES 
 %token K_SELECT K_FROM K_WHERE
 %token K_DELETE
+%token K_UPDATE K_SET
 %token K_INT K_VARCHAR
+
+%token K_JOIN K_ON
+%token K_GROUP K_BY K_ORDER
+
 
 /* * 非终结符 (Rules) 
  * 几乎所有的非终结符都会返回一个 ASTNode* 指针
  */
-%type <node> statements statement create_statement insert_statement select_statement
+%type <node> statements statement create_statement insert_statement select_statement update_statement
 %type <node> column_definitions column_definition column_list column_name value_list value
 %type <node> optional_column_list delete_statement
 %type <node> select_list optional_where_clause where_clause expression
 %type <node> comparison_operator literal
 %type <node> data_type optional_varchar_length
+%type <node> from_clause column_ref join_clause
+%type <node> optional_group_by_clause group_by_clause 
+%type <node> optional_order_by_clause order_by_clause 
+%type <node> set_clause set_list assignment // 新增
 
 // 定义操作符 Token
 %token OP_EQ OP_LT OP_GT OP_LTE OP_GTE OP_NEQ
@@ -109,8 +118,54 @@ statement:
     | insert_statement ';' { current_parser_state = STATE_EXPECTING_COMMAND; $$ = $1; }
     | select_statement ';' { current_parser_state = STATE_EXPECTING_COMMAND; $$ = $1; }
     | delete_statement ';' { current_parser_state = STATE_EXPECTING_COMMAND; $$ = $1; }
+    | update_statement ';' { current_parser_state = STATE_EXPECTING_COMMAND; $$ = $1; }
     | error ';'            { current_parser_state = STATE_EXPECTING_COMMAND; $$ = nullptr; yyerrok; }
     ;
+
+/* --- UPDATE 语句的文法 ---
+ * 示例: UPDATE users SET name = 'Bob' WHERE id = 1;
+ */
+update_statement:
+    K_UPDATE IDENTIFIER set_clause optional_where_clause
+    {
+        $$ = new ASTNode(UPDATE_STMT, "", @$);
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $2, @2)); // 子节点0: 表名
+        $$->addChild($3); // 子节点1: SET_CLAUSE
+        $$->addChild($4); // 子节点2: WHERE_CLAUSE
+        free($2);
+    }
+;
+
+set_clause: // 这是一个辅助规则，实际的节点在 set_list 中创建
+    K_SET set_list
+    {
+        $$ = $2;
+    }
+;
+
+set_list:
+    assignment
+    {
+        $$ = new ASTNode(SET_CLAUSE, "", @$);
+        $$->addChild($1);
+    }
+    | set_list ',' assignment
+    {
+        $1->addChild($3);
+        $$ = $1;
+    }
+;
+
+assignment:
+    IDENTIFIER OP_EQ literal
+    {
+        // 创建一个 EQUAL_OPERATOR 节点来表示赋值
+        $$ = new ASTNode(EQUAL_OPERATOR, "", @2);
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $1, @1));
+        $$->addChild($3);
+        free($1);
+    }
+;
 
 /* --- CREATE TABLE 语句的文法 ---
  * 示例: CREATE TABLE users (id INT, name VARCHAR);
@@ -177,15 +232,80 @@ optional_varchar_length:
  */
 select_statement:
     K_SELECT select_list  { current_parser_state = STATE_EXPECTING_FROM_AFTER_COLUMNS; }
-    K_FROM IDENTIFIER optional_where_clause {
+    from_clause optional_where_clause 
+    optional_group_by_clause
+    optional_order_by_clause 
+    {
         $$ = new ASTNode(SELECT_STMT, "", @$);
         // 子节点1: 列表 (select_list)
         $$->addChild($2);
         // 子节点2: 表名 (IDENTIFIER)
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $5, @5));
+        $$->addChild($4);
         // 子节点3: 可选的 WHERE 子句 (可能为nullptr)
-        $$->addChild($6);
-        free($5);
+        $$->addChild($5);
+    }
+    ;
+
+from_clause:
+    K_FROM { current_parser_state = STATE_EXPECTING_TABLE_AFTER_FROM; }
+    IDENTIFIER 
+    join_clause
+    {
+        // 创建一个 FROM_CLAUSE 节点，并将表名作为其 value
+        $$ = new ASTNode(FROM_CLAUSE, $3, @$);
+        free($3);
+        // 如果有 JOIN 子句，将其作为 FROM_CLAUSE 的子节点
+        $$->addChild($4);
+    }
+    ;
+
+join_clause:
+    /* empty */ { $$ = nullptr; }
+    | K_JOIN IDENTIFIER K_ON expression
+    {
+        // 創建 JOIN_CLAUSE 節點
+        $$ = new ASTNode(JOIN_CLAUSE, "", @1);
+        // 子節點0: 被連接的表
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $2, @2));
+        free($2);
+        // 子節點1: ON 條件
+        ASTNode* on_cond = new ASTNode(ON_CONDITION, "", @3);
+        on_cond->addChild($4);
+        $$->addChild(on_cond);
+    }
+    ;
+
+optional_group_by_clause:
+    /* empty */ { $$ = nullptr; }
+    | group_by_clause { $$ = $1; }
+;
+
+group_by_clause:
+    K_GROUP K_BY column_list
+    {
+        $$ = new ASTNode(GROUP_BY_CLAUSE, "", @$);
+        for (auto child : $3->children) {
+            $$->addChild(child);
+        }
+        $3->children.clear(); // 避免双重释放
+        delete $3;
+    }
+;
+
+optional_order_by_clause:
+    /* empty */ { $$ = nullptr; }
+    | order_by_clause { $$ = $1; }
+    ;
+
+order_by_clause:
+    K_ORDER K_BY column_list
+    {
+        $$ = new ASTNode(ORDER_BY_CLAUSE, "", @$);
+        for (auto child : $3->children) {
+            $$->addChild(child);
+        }
+        $3->children.clear(); // 避免双重释放
+        delete $3;
     }
     ;
 
@@ -222,6 +342,12 @@ column_name:
     IDENTIFIER {
         $$ = new ASTNode(IDENTIFIER_NODE, $1, @1);
         free($1);
+    }
+    | IDENTIFIER '.' IDENTIFIER {
+        std::string qualified_name = std::string($1) + "." + std::string($3);
+        $$ = new ASTNode(IDENTIFIER_NODE, qualified_name, @$);
+        free($1);
+        free($3);
     }
     ;
 
@@ -286,7 +412,7 @@ delete_statement:
     K_DELETE K_FROM IDENTIFIER optional_where_clause {
         $$ = new ASTNode(DELETE_STMT, "", @$);
         // 子节点1: 表名
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3, @3));
+        $$->addChild(new ASTNode(FROM_CLAUSE, $3, @3));
         // 子节点2: 可选的 WHERE 子句 (可能为nullptr)
         $$->addChild($4);
         free($3);
@@ -295,24 +421,42 @@ delete_statement:
 
 
 /* --- WHERE 条件子句的简单文法 ---
- * 注意: 为保持简单，这里只支持 "标识符 操作符 字面量" 形式
  */
 expression:
-    IDENTIFIER comparison_operator literal {
+    column_ref comparison_operator column_ref {
         $$ = $2;
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $1, @1));
+        $$->location = @$;
+        $$->addChild($1);
         $$->addChild($3);
+    }
+    | column_ref comparison_operator literal { // 也保留 列=字面量
+        $$ = $2;
+        $$->location = @$;
+        $$->addChild($1);
+        $$->addChild($3);
+    }
+    ;
+
+column_ref:
+    IDENTIFIER {
+        $$ = new ASTNode(IDENTIFIER_NODE, $1, @1);
         free($1);
+    }
+    | IDENTIFIER '.' IDENTIFIER {
+        std::string qualified_name = std::string($1) + "." + std::string($3);
+        $$ = new ASTNode(IDENTIFIER_NODE, qualified_name, @$);
+        free($1);
+        free($3);
     }
     ;
 
 comparison_operator:
-    OP_EQ  { $$ = new ASTNode(BINARY_EXPR, "=", @1);  }
+    OP_EQ  { $$ = new ASTNode(EQUAL_OPERATOR, "=", @1);  }
     | OP_NEQ { $$ = new ASTNode(BINARY_EXPR, "!=", @1); }
-    | OP_GT  { $$ = new ASTNode(BINARY_EXPR, ">", @1);  }
-    | OP_GTE  { $$ = new ASTNode(BINARY_EXPR, ">=", @1); }
-    | OP_LT  { $$ = new ASTNode(BINARY_EXPR, "<", @1);  }
-    | OP_LTE  { $$ = new ASTNode(BINARY_EXPR, "<=", @1); }
+    | OP_GT  { $$ = new ASTNode(GREATER_THAN_OPERATOR, ">", @1);  }
+    | OP_GTE  { $$ = new ASTNode(GREATER_THAN_OR_EQUAL_OPERATOR, ">=", @1); }
+    | OP_LT  { $$ = new ASTNode(LESS_THAN_OPERATOR, "<", @1);  }
+    | OP_LTE  { $$ = new ASTNode(LESS_THAN_OR_EQUAL_OPERATOR, "<=", @1); }
     ;
 
 literal:
@@ -419,6 +563,30 @@ std::string nodeTypeToString(ASTNodeType type)
         return "WHERE_CLAUSE";
     case EQUAL_OPERATOR:
         return "EQUAL_OPERATOR";
+    case GREATER_THAN_OPERATOR:
+        return "GREATER_THAN_OPERATOR";
+    case GREATER_THAN_OR_EQUAL_OPERATOR:
+        return "GREATER_THAN_OR_EQUAL_OPERATOR";
+    case LESS_THAN_OPERATOR:
+        return "LESS_THAN_OPERATOR";
+    case LESS_THAN_OR_EQUAL_OPERATOR:
+        return "LESS_THAN_OR_EQUAL_OPERATOR";
+    case BINARY_EXPR:
+        return "BINARY_EXPR";
+    case FROM_CLAUSE:
+        return "FROM_CLAUSE";
+    case JOIN_CLAUSE:
+        return "JOIN_CLAUSE";
+    case ON_CONDITION:
+        return "ON_CONDITION";
+    case GROUP_BY_CLAUSE:
+        return "GROUP_BY_CLAUSE";
+    case ORDER_BY_CLAUSE:
+        return "ORDER_BY_CLAUSE";
+    case UPDATE_STMT:
+        return "UPDATE_STMT";
+    case SET_CLAUSE:
+        return "SET_CLAUSE";
     default:
         return "UNKNOWN_NODE";
     }

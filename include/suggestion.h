@@ -10,7 +10,8 @@
 // 所有 SQL 关键字的列表 (统一大写)
 const std::vector<std::string> keywords = {
     "CREATE", "TABLE", "INSERT", "INTO", "VALUES", "SELECT", 
-    "FROM", "WHERE", "DELETE", "INT", "VARCHAR"
+    "FROM", "WHERE", "DELETE", "INT", "VARCHAR", "JOIN", "ON",
+    "UPDATE", "SET", "GROUP", "BY", "ORDER"
 };
 
 enum ParserState {
@@ -39,6 +40,7 @@ const std::vector<std::string> keywords_for_create = {"TABLE"};
 const std::vector<std::string> keywords_for_insert = {"INTO", "VALUES"};
 const std::vector<std::string> keywords_for_select = {"FROM"};
 const std::vector<std::string> keywords_for_data_type = {"INT", "VARCHAR"};
+
 
 
 /**
@@ -93,8 +95,9 @@ inline std::string findClosestKeyword(const std::string& mistyped_word, ParserSt
             keywords_to_search = &keywords_for_data_type;
             break;
         default:
-            // 对于其他状态，我们暂时不提供建议
-            return "";
+            // 对于其他状态,使用通用关键字
+            keywords_to_search = &keywords;
+            break;
     }
 
     std::string best_suggestion = "";
