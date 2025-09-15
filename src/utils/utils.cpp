@@ -1,6 +1,5 @@
 #include "utils.h"
-#include <iostream>
-#include <variant>
+
 
 std::string nodeTypeToString(ASTNodeType type)
 {
@@ -101,4 +100,30 @@ void printAST(ASTNode *node, int depth)
     {
         printAST(child, depth + 1);
     }
+}
+
+
+// 简单的 Levenshtein 距离算法实现
+int get_edit_distance(const std::string& s1, const std::string& s2) {
+    // ... (这里可以插入一个 Levenshtein 距离的实现，网上有很多示例) ...
+    // ... (例如，使用一个动态规划的算法) ...
+    const size_t m(s1.size()), n(s2.size());
+    std::vector<int> costs(n + 1);
+
+    std::iota(costs.begin(), costs.end(), 0);
+
+    for (size_t i = 1; i <= m; ++i) {
+        costs[0] = i;
+        int last_diag = i - 1;
+        for (size_t j = 1; j <= n; ++j) {
+            int old_diag = costs[j];
+            costs[j] = std::min({
+                costs[j] + 1,
+                costs[j-1] + 1,
+                last_diag + (s1[i - 1] == s2[j - 1] ? 0 : 1)
+            });
+            last_diag = old_diag;
+        }
+    }
+    return costs[n];
 }
