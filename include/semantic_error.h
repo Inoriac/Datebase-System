@@ -4,6 +4,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <sstream>
 
 class SemanticError : public std::runtime_error
 {
@@ -19,11 +20,22 @@ public:
         UNKNOWN_ERROR
     };
 
-    SemanticError(ErrorType type, const std::string &reason)
-        : std::runtime_error(reason), error_type(type) {}
+    SemanticError(ErrorType type, const std::string &reason, const ASTNode *node)
+        : std::runtime_error(reason), error_type(type)
+    {
+        std::stringstream ss;
+        ss << reason;
+        // 检查节点是否有效，以及它是否有位置信息
+        if (node && node->location.first_line > 0)
+        {
+            ss << " (行: " << node->location.first_line
+               << ", 列: " << node->location.first_column << ")";
+        }
+        description_ = ss.str();
+    }
 
     ErrorType getType() const { return error_type; }
-    
+
     std::string getErrorDescription() const
     {
         switch (error_type)
@@ -48,6 +60,7 @@ public:
 
 private:
     ErrorType error_type;
+    std::string description_;
 };
 
 #endif

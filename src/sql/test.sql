@@ -17,7 +17,7 @@ SELECT name FROM students;
 
 SELECT id, name FROM users WHERE id > 100;
 
-
+UPDATE user SET name = 'Alice' WHERE id = 1;
 
 
 

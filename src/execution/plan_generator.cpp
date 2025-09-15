@@ -10,7 +10,7 @@ std::unique_ptr<Operator> PlanGenerator::generatePlan(ASTNode* root) {
     }
     // 我们假设 AST 的根节点是语句列表
     if (root->type != ROOT_NODE || root->children.empty()) {
-        throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid AST root node."); // 暂无位置信息
+        throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid AST root node.", root); // 暂无位置信息
 
     }
     // 假设只处理一个语句，返回第一个语句的执行计划
@@ -97,7 +97,7 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode* node) {
             return filter_op; // DELETE 的最终算子也可以是 Filter，由后续执行器处理
         }
         default:
-            throw SemanticError(SemanticError::SYNTAX_ERROR, "Unsupported statement type."); // 暂无位置信息
+            throw SemanticError(SemanticError::SYNTAX_ERROR, "Unsupported statement type.", node); // 暂无位置信息
     }
     return nullptr;
 }
