@@ -98,6 +98,9 @@ add_executable(test_db
         tests/test_primary_key_constraints.cpp
         tests/test_simple_init.cpp
         tests/test_query_performance.cpp
+        tests/bplus/test_bplus_tree_merge.cpp
+        tests/bplus/test_bplus_tree_split.cpp
+        tests/bplus/test_bplus_tree_split_detailed.cpp
 )
 
 # 2. 链接库和头文件

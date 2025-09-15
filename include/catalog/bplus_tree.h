@@ -136,6 +136,19 @@ private:
     bool SplitNode(std::shared_ptr<BPlusNode> node);
     void MergeNodes(std::shared_ptr<BPlusNode> left, std::shared_ptr<BPlusNode> right);
     
+    // 分裂辅助方法
+    bool SplitLeafNode(std::shared_ptr<BPlusLeafNode> leaf);
+    bool SplitInternalNode(std::shared_ptr<BPlusInternalNode> internal);
+    bool InsertIntoParent(std::shared_ptr<BPlusNode> left_child, 
+                         const Value& separator_key, 
+                         std::shared_ptr<BPlusNode> right_child);
+    std::shared_ptr<BPlusInternalNode> FindParent(int child_page_id) const;
+    
+    // 合并辅助方法
+    bool MergeLeafNodes(std::shared_ptr<BPlusLeafNode> left, std::shared_ptr<BPlusLeafNode> right);
+    bool MergeInternalNodes(std::shared_ptr<BPlusInternalNode> left, std::shared_ptr<BPlusInternalNode> right);
+    bool RedistributeNodes(std::shared_ptr<BPlusNode> left, std::shared_ptr<BPlusNode> right);
+    
     // 比较函数
     int CompareValues(const Value& a, const Value& b) const;
 };

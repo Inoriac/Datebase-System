@@ -36,10 +36,14 @@ bool BPlusLeafNode::Remove(const Value& key) {
 }
 
 int BPlusLeafNode::Find(const Value& key) const {
-    // 只在查询特定键值时打印
-    if (std::holds_alternative<int>(key) && std::get<int>(key) == 500) {
-        std::cout << "DEBUG: BPlusLeafNode::Find called with key=500, searching in " << keys_.size() << " keys" << std::endl;
+    // 打印所有查找操作
+    std::cout << "DEBUG: BPlusLeafNode::Find called with key=";
+    if (std::holds_alternative<std::string>(key)) {
+        std::cout << std::get<std::string>(key);
+    } else if (std::holds_alternative<int>(key)) {
+        std::cout << std::get<int>(key);
     }
+    std::cout << ", searching in " << keys_.size() << " keys" << std::endl;
     
     for (size_t i = 0; i < keys_.size(); ++i) {
         if (keys_[i] == key) {
@@ -104,6 +108,12 @@ int BPlusInternalNode::FindChild(const Value& key) const {
     auto it = std::upper_bound(keys_.begin(), keys_.end(), key);
     int pos = static_cast<int>(it - keys_.begin());
     
+    // 如果找到的键大于key，选择左子节点（pos不变）
+    // 如果没找到（pos == keys_.size()），选择最后一个子节点
+    if (pos == keys_.size()) {
+        pos = keys_.size(); // 选择最后一个子节点
+    }
+    
     return child_page_ids_[pos];
 }
 
@@ -116,7 +126,7 @@ BPlusTreeIndex::BPlusTreeIndex(BufferPoolManager* bpm, const std::string& table_
     
     // 根据列类型设置键类型
     // 简化实现，根据列名判断类型
-    if (column_name == "table_name") {
+    if (column_name == "table_name" || column_name == "name") {
         key_type_ = DataType::Varchar;
     } else if (column_name == "id") {
         key_type_ = DataType::Int;
@@ -171,6 +181,13 @@ bool BPlusTreeIndex::Insert(const Value& key, int record_id) {
     
     auto leaf_node = std::static_pointer_cast<BPlusLeafNode>(leaf);
     
+    // 检查键是否已经存在
+    int existing_record_id = leaf_node->Find(key);
+    if (existing_record_id != -1) {
+        std::cout << "DEBUG: Key already exists with record_id=" << existing_record_id << std::endl;
+        return false;
+    }
+    
     // 检查叶子节点是否已满
     if (leaf_node->keys_.size() < max_keys_per_node_) {
         // 叶子节点未满，直接插入
@@ -181,8 +198,10 @@ bool BPlusTreeIndex::Insert(const Value& key, int record_id) {
     } else {
         // 叶子节点已满，需要分裂
         std::cout << "DEBUG: Leaf node is full, splitting..." << std::endl;
+        std::cout << "DEBUG: Before split - node has " << leaf_node->GetKeyCount() << " keys" << std::endl;
         leaf_node->Insert(key, record_id);
         SplitNode(leaf_node);
+        std::cout << "DEBUG: After split - node has " << leaf_node->GetKeyCount() << " keys" << std::endl;
         return true;
     }
 }
@@ -203,10 +222,14 @@ bool BPlusTreeIndex::Remove(const Value& key) {
 }
 
 std::vector<int> BPlusTreeIndex::Find(const Value& key) const {
-    // 只在查询特定键值时打印
-    if (std::holds_alternative<int>(key) && std::get<int>(key) == 500) {
-        std::cout << "DEBUG: BPlusTreeIndex::Find called with key=500, root_page_id=" << root_page_id_ << std::endl;
+    // 打印所有查找操作
+    std::cout << "DEBUG: BPlusTreeIndex::Find called with key=";
+    if (std::holds_alternative<std::string>(key)) {
+        std::cout << std::get<std::string>(key);
+    } else if (std::holds_alternative<int>(key)) {
+        std::cout << std::get<int>(key);
     }
+    std::cout << ", root_page_id=" << root_page_id_ << std::endl;
     
     if (root_page_id_ == -1) {
         std::cout << "DEBUG: No root page, returning empty" << std::endl;
@@ -248,6 +271,7 @@ std::vector<int> BPlusTreeIndex::FindRange(const Value& start_key, const Value& 
         
         // 在当前叶子节点中搜索范围
         auto leaf_results = current_leaf->FindRange(start_key, end_key);
+        std::cout << "DEBUG: Found " << leaf_results.size() << " results in current leaf node" << std::endl;
         result.insert(result.end(), leaf_results.begin(), leaf_results.end());
         
         // 检查是否需要继续到下一个叶子节点
@@ -257,10 +281,11 @@ std::vector<int> BPlusTreeIndex::FindRange(const Value& start_key, const Value& 
                 current_leaf = std::static_pointer_cast<BPlusLeafNode>(LoadNode(current_leaf->next_leaf_page_id_));
                 if (!current_leaf) break;
             } else {
+                // 没有下一个叶子节点，停止搜索
                 break;
             }
         } else {
-            // 当前叶子节点已经包含了所有可能的键
+            // 当前叶子节点已经包含了所有可能的键，停止搜索
             break;
         }
     }
@@ -289,12 +314,26 @@ std::shared_ptr<BPlusNode> BPlusTreeIndex::FindLeaf(const Value& key) const {
         for (size_t i = 0; i < internal->keys_.size(); ++i) {
             if (std::holds_alternative<int>(internal->keys_[i])) {
                 std::cout << std::get<int>(internal->keys_[i]) << " ";
+            } else if (std::holds_alternative<std::string>(internal->keys_[i])) {
+                std::cout << std::get<std::string>(internal->keys_[i]) << " ";
+            } else if (std::holds_alternative<bool>(internal->keys_[i])) {
+                std::cout << (std::get<bool>(internal->keys_[i]) ? "true" : "false") << " ";
             }
         }
         std::cout << std::endl;
         
         int child_page_id = internal->FindChild(key);
-        std::cout << "DEBUG: Looking for key " << std::get<int>(key) << ", found child page " << child_page_id << std::endl;
+        std::cout << "DEBUG: Looking for key ";
+        if (std::holds_alternative<int>(key)) {
+            std::cout << std::get<int>(key);
+        } else if (std::holds_alternative<std::string>(key)) {
+            std::cout << std::get<std::string>(key);
+        } else if (std::holds_alternative<bool>(key)) {
+            std::cout << (std::get<bool>(key) ? "true" : "false");
+        } else {
+            std::cout << "unknown type";
+        }
+        std::cout << ", found child page " << child_page_id << std::endl;
         
         current = LoadNode(child_page_id);
         if (!current) {
@@ -308,101 +347,284 @@ std::shared_ptr<BPlusNode> BPlusTreeIndex::FindLeaf(const Value& key) const {
 
 bool BPlusTreeIndex::SplitNode(std::shared_ptr<BPlusNode> node) {
     if (node->IsLeaf()) {
-        // 分裂叶子节点
-        auto leaf = std::static_pointer_cast<BPlusLeafNode>(node);
-        int mid = leaf->GetKeyCount() / 2;
-        
-        // 创建新的叶子节点
-        int new_page_id = AllocateNewPage();
-        auto new_leaf = std::make_shared<BPlusLeafNode>(new_page_id);
-        
-        // 移动一半的键值对到新节点
-        for (int i = mid; i < leaf->GetKeyCount(); ++i) {
-            new_leaf->keys_.push_back(leaf->keys_[i]);
-            new_leaf->record_ids_.push_back(leaf->record_ids_[i]);
-        }
-        
-        // 删除原节点中的一半键值对
-        leaf->keys_.erase(leaf->keys_.begin() + mid, leaf->keys_.end());
-        leaf->record_ids_.erase(leaf->record_ids_.begin() + mid, leaf->record_ids_.end());
-        
-        // 更新叶子节点链表
-        new_leaf->next_leaf_page_id_ = leaf->next_leaf_page_id_;
-        new_leaf->prev_leaf_page_id_ = leaf->page_id_;
-        leaf->next_leaf_page_id_ = new_page_id;
-        
-        // 保存节点
-        SaveNode(leaf);
-        SaveNode(new_leaf);
-        
-        // 如果这是根节点，需要创建新的根节点
-        if (leaf->page_id_ == root_page_id_) {
-            int new_root_id = AllocateNewPage();
-            auto new_root = std::make_shared<BPlusInternalNode>(new_root_id);
-            
-            // 使用新叶子节点的第一个键作为分隔键
-            // 在B+树中，内部节点的键用于分隔子节点
-            new_root->keys_.push_back(new_leaf->keys_[0]);
-            new_root->child_page_ids_.push_back(leaf->page_id_);
-            new_root->child_page_ids_.push_back(new_page_id);
-            
-            root_page_id_ = new_root_id;
-            height_++;
-            SaveNode(new_root);
-            
-            std::cout << "DEBUG: Created new root with separator key=" << std::get<int>(new_leaf->keys_[0]) 
-                      << ", left child=" << leaf->page_id_ << ", right child=" << new_page_id << std::endl;
-            std::cout << "DEBUG: New root has " << new_root->keys_.size() << " keys and " 
-                      << new_root->child_page_ids_.size() << " children" << std::endl;
-        } else {
-            // 如果不是根节点，需要将分隔键插入到父节点
-            // 这里需要实现向上传播的逻辑
-            std::cout << "DEBUG: Leaf split but not root - parent update not implemented" << std::endl;
-            std::cout << "DEBUG: This is a critical issue - parent node needs to be updated with separator key " 
-                      << std::get<int>(new_leaf->keys_[0]) << std::endl;
-        }
-        
-        return true;
+        return SplitLeafNode(std::static_pointer_cast<BPlusLeafNode>(node));
     } else {
-        // 分裂内部节点
-        auto internal = std::static_pointer_cast<BPlusInternalNode>(node);
-        int mid = internal->GetKeyCount() / 2;
-        
-        // 创建新的内部节点
-        int new_page_id = AllocateNewPage();
-        auto new_internal = std::make_shared<BPlusInternalNode>(new_page_id);
-        
-        // 移动一半的键和子节点到新节点
-        Value middle_key = internal->keys_[mid];
-        for (int i = mid + 1; i < internal->GetKeyCount(); ++i) {
-            new_internal->keys_.push_back(internal->keys_[i]);
-        }
-        for (int i = mid + 1; i < static_cast<int>(internal->child_page_ids_.size()); ++i) {
-            new_internal->child_page_ids_.push_back(internal->child_page_ids_[i]);
-        }
-        
-        // 删除原节点中的一半键和子节点
-        internal->keys_.erase(internal->keys_.begin() + mid, internal->keys_.end());
-        internal->child_page_ids_.erase(internal->child_page_ids_.begin() + mid + 1, internal->child_page_ids_.end());
-        
-        // 保存节点
-        SaveNode(internal);
-        SaveNode(new_internal);
-        
-        // 如果这是根节点，需要创建新的根节点
-        if (internal->page_id_ == root_page_id_) {
-            int new_root_id = AllocateNewPage();
-            auto new_root = std::make_shared<BPlusInternalNode>(new_root_id);
-            
-            new_root->keys_.push_back(middle_key);
-            new_root->child_page_ids_.push_back(internal->page_id_);
-            new_root->child_page_ids_.push_back(new_page_id);
-            
-            root_page_id_ = new_root_id;
-            height_++;
-            SaveNode(new_root);
+        return SplitInternalNode(std::static_pointer_cast<BPlusInternalNode>(node));
+    }
+}
+
+// ========== 完善的分裂逻辑实现 ==========
+
+bool BPlusTreeIndex::SplitLeafNode(std::shared_ptr<BPlusLeafNode> leaf) {
+    std::cout << "DEBUG: Splitting leaf node with " << leaf->GetKeyCount() << " keys" << std::endl;
+    
+    int mid = leaf->GetKeyCount() / 2;
+    if (mid <= 0) {
+        std::cout << "DEBUG: Leaf node has too few keys to split" << std::endl;
+        return false;
+    }
+    
+    // 创建新的叶子节点
+    int new_page_id = AllocateNewPage();
+    if (new_page_id == -1) {
+        std::cout << "DEBUG: Failed to allocate new page for leaf split" << std::endl;
+        return false;
+    }
+    
+    auto new_leaf = std::make_shared<BPlusLeafNode>(new_page_id);
+    
+    // 移动一半的键值对到新节点（从mid+1开始，保留mid在原节点中）
+    for (int i = mid + 1; i < leaf->GetKeyCount(); ++i) {
+        new_leaf->keys_.push_back(leaf->keys_[i]);
+        new_leaf->record_ids_.push_back(leaf->record_ids_[i]);
+    }
+    
+    // 删除原节点中的一半键值对（保留mid在原节点中）
+    leaf->keys_.erase(leaf->keys_.begin() + mid + 1, leaf->keys_.end());
+    leaf->record_ids_.erase(leaf->record_ids_.begin() + mid + 1, leaf->record_ids_.end());
+    
+    // 更新叶子节点链表
+    new_leaf->next_leaf_page_id_ = leaf->next_leaf_page_id_;
+    new_leaf->prev_leaf_page_id_ = leaf->page_id_;
+    leaf->next_leaf_page_id_ = new_page_id;
+    
+    // 更新前一个叶子节点的next指针
+    if (new_leaf->next_leaf_page_id_ != -1) {
+        auto next_leaf = std::static_pointer_cast<BPlusLeafNode>(LoadNode(new_leaf->next_leaf_page_id_));
+        if (next_leaf) {
+            next_leaf->prev_leaf_page_id_ = new_page_id;
+            SaveNode(next_leaf);
         }
     }
+    
+    // 保存节点
+    if (!SaveNode(leaf) || !SaveNode(new_leaf)) {
+        std::cout << "DEBUG: Failed to save nodes during leaf split" << std::endl;
+        return false;
+    }
+    
+    // 使用新叶子节点的第一个键作为分隔键
+    Value separator_key = new_leaf->keys_[0];
+    
+    std::cout << "DEBUG: Split completed - Left node has " << leaf->keys_.size() 
+              << " keys, Right node has " << new_leaf->keys_.size() 
+              << " keys, Separator key: ";
+    if (std::holds_alternative<std::string>(separator_key)) {
+        std::cout << std::get<std::string>(separator_key);
+    } else if (std::holds_alternative<int>(separator_key)) {
+        std::cout << std::get<int>(separator_key);
+    }
+    std::cout << std::endl;
+    
+    // 打印左节点的键
+    std::cout << "DEBUG: Left node keys: ";
+    for (size_t i = 0; i < leaf->keys_.size(); ++i) {
+        if (std::holds_alternative<std::string>(leaf->keys_[i])) {
+            std::cout << std::get<std::string>(leaf->keys_[i]) << " ";
+        }
+    }
+    std::cout << std::endl;
+    
+    // 打印右节点的键
+    std::cout << "DEBUG: Right node keys: ";
+    for (size_t i = 0; i < new_leaf->keys_.size(); ++i) {
+        if (std::holds_alternative<std::string>(new_leaf->keys_[i])) {
+            std::cout << std::get<std::string>(new_leaf->keys_[i]) << " ";
+        }
+    }
+    std::cout << std::endl;
+    
+    // 如果这是根节点，需要创建新的根节点
+    if (leaf->page_id_ == root_page_id_) {
+        int new_root_id = AllocateNewPage();
+        if (new_root_id == -1) {
+            std::cout << "DEBUG: Failed to allocate new root page" << std::endl;
+            return false;
+        }
+        
+        auto new_root = std::make_shared<BPlusInternalNode>(new_root_id);
+        new_root->keys_.push_back(separator_key);
+        new_root->child_page_ids_.push_back(leaf->page_id_);
+        new_root->child_page_ids_.push_back(new_page_id);
+        
+        root_page_id_ = new_root_id;
+        height_++;
+        
+        if (!SaveNode(new_root)) {
+            std::cout << "DEBUG: Failed to save new root node" << std::endl;
+            return false;
+        }
+        
+        std::cout << "DEBUG: Created new root with separator key, left child=" 
+                  << leaf->page_id_ << ", right child=" << new_page_id << std::endl;
+    } else {
+        // 将分隔键插入到父节点
+        if (!InsertIntoParent(leaf, separator_key, new_leaf)) {
+            std::cout << "DEBUG: Failed to insert separator key into parent" << std::endl;
+            return false;
+        }
+    }
+    
+    std::cout << "DEBUG: Leaf split completed successfully" << std::endl;
+    return true;
+}
+
+bool BPlusTreeIndex::SplitInternalNode(std::shared_ptr<BPlusInternalNode> internal) {
+    std::cout << "DEBUG: Splitting internal node with " << internal->GetKeyCount() << " keys" << std::endl;
+    
+    int mid = internal->GetKeyCount() / 2;
+    if (mid <= 0) {
+        std::cout << "DEBUG: Internal node has too few keys to split" << std::endl;
+        return false;
+    }
+    
+    // 创建新的内部节点
+    int new_page_id = AllocateNewPage();
+    if (new_page_id == -1) {
+        std::cout << "DEBUG: Failed to allocate new page for internal split" << std::endl;
+        return false;
+    }
+    
+    auto new_internal = std::make_shared<BPlusInternalNode>(new_page_id);
+    
+    // 移动一半的键和子节点到新节点
+    Value middle_key = internal->keys_[mid];
+    for (int i = mid + 1; i < internal->GetKeyCount(); ++i) {
+        new_internal->keys_.push_back(internal->keys_[i]);
+    }
+    for (int i = mid + 1; i < static_cast<int>(internal->child_page_ids_.size()); ++i) {
+        new_internal->child_page_ids_.push_back(internal->child_page_ids_[i]);
+    }
+    
+    // 删除原节点中的一半键和子节点
+    internal->keys_.erase(internal->keys_.begin() + mid, internal->keys_.end());
+    internal->child_page_ids_.erase(internal->child_page_ids_.begin() + mid + 1, internal->child_page_ids_.end());
+    
+    // 保存节点
+    if (!SaveNode(internal) || !SaveNode(new_internal)) {
+        std::cout << "DEBUG: Failed to save nodes during internal split" << std::endl;
+        return false;
+    }
+    
+    // 如果这是根节点，需要创建新的根节点
+    if (internal->page_id_ == root_page_id_) {
+        int new_root_id = AllocateNewPage();
+        if (new_root_id == -1) {
+            std::cout << "DEBUG: Failed to allocate new root page" << std::endl;
+            return false;
+        }
+        
+        auto new_root = std::make_shared<BPlusInternalNode>(new_root_id);
+        new_root->keys_.push_back(middle_key);
+        new_root->child_page_ids_.push_back(internal->page_id_);
+        new_root->child_page_ids_.push_back(new_page_id);
+        
+        root_page_id_ = new_root_id;
+        height_++;
+        
+        if (!SaveNode(new_root)) {
+            std::cout << "DEBUG: Failed to save new root node" << std::endl;
+            return false;
+        }
+        
+        std::cout << "DEBUG: Created new root with separator key, left child=" 
+                  << internal->page_id_ << ", right child=" << new_page_id << std::endl;
+    } else {
+        // 将分隔键插入到父节点
+        if (!InsertIntoParent(internal, middle_key, new_internal)) {
+            std::cout << "DEBUG: Failed to insert separator key into parent" << std::endl;
+            return false;
+        }
+    }
+    
+    std::cout << "DEBUG: Internal split completed successfully" << std::endl;
+    return true;
+}
+
+bool BPlusTreeIndex::InsertIntoParent(std::shared_ptr<BPlusNode> left_child, 
+                                     const Value& separator_key, 
+                                     std::shared_ptr<BPlusNode> right_child) {
+    std::cout << "DEBUG: Inserting separator key into parent" << std::endl;
+    
+    // 查找父节点
+    auto parent = FindParent(left_child->page_id_);
+    if (!parent) {
+        std::cout << "DEBUG: Could not find parent node" << std::endl;
+        return false;
+    }
+    
+    // 检查父节点是否有空间
+    // 对于内部节点，分裂阈值应该与叶子节点不同
+    // 内部节点的分裂阈值应该更小，以确保及时分裂
+    int max_keys_for_internal = max_keys_per_node_ / 2; // 使用更小的阈值
+    if (parent->GetKeyCount() < max_keys_for_internal) {
+        // 父节点有空间，直接插入
+        parent->Insert(separator_key, right_child->page_id_);
+        if (!SaveNode(parent)) {
+            std::cout << "DEBUG: Failed to save parent node" << std::endl;
+            return false;
+        }
+        std::cout << "DEBUG: Inserted separator key into parent successfully" << std::endl;
+        return true;
+    } else {
+        // 父节点已满，需要先分裂父节点
+        std::cout << "DEBUG: Parent node is full, splitting parent first" << std::endl;
+        
+        // 先插入分隔键
+        parent->Insert(separator_key, right_child->page_id_);
+        
+        // 分裂父节点
+        if (!SplitNode(parent)) {
+            std::cout << "DEBUG: Failed to split parent node" << std::endl;
+            return false;
+        }
+        
+        std::cout << "DEBUG: Parent node split and separator key inserted successfully" << std::endl;
+        return true;
+    }
+}
+
+std::shared_ptr<BPlusInternalNode> BPlusTreeIndex::FindParent(int child_page_id) const {
+    if (root_page_id_ == -1 || child_page_id == root_page_id_) {
+        return nullptr; // 根节点没有父节点
+    }
+    
+    // 从根节点开始搜索
+    auto current = LoadNode(root_page_id_);
+    if (!current) {
+        return nullptr;
+    }
+    
+    // 如果根节点是叶子节点，说明树只有一层
+    if (current->IsLeaf()) {
+        return nullptr;
+    }
+    
+    // 使用BFS搜索父节点
+    std::vector<std::shared_ptr<BPlusInternalNode>> queue;
+    queue.push_back(std::static_pointer_cast<BPlusInternalNode>(current));
+    
+    while (!queue.empty()) {
+        auto node = queue.front();
+        queue.erase(queue.begin());
+        
+        // 检查是否包含目标子节点
+        for (int child_id : node->child_page_ids_) {
+            if (child_id == child_page_id) {
+                return node;
+            }
+        }
+        
+        // 将子节点加入队列
+        for (int child_id : node->child_page_ids_) {
+            auto child = LoadNode(child_id);
+            if (child && !child->IsLeaf()) {
+                queue.push_back(std::static_pointer_cast<BPlusInternalNode>(child));
+            }
+        }
+    }
+    
+    return nullptr;
 }
 
 std::shared_ptr<BPlusNode> BPlusTreeIndex::LoadNode(int page_id) const {
@@ -605,10 +827,18 @@ bool BPlusTreeIndex::SaveNode(std::shared_ptr<BPlusNode> node) {
             
             // 根据key_type_序列化键值
             if (key_type_ == DataType::Int) {
+                if (!std::holds_alternative<int>(leaf->keys_[i])) {
+                    std::cout << "DEBUG: Expected int key but got different type at index " << i << std::endl;
+                    return false;
+                }
                 int key_value = std::get<int>(leaf->keys_[i]);
                 std::memcpy(data + offset, &key_value, sizeof(int));
                 offset += sizeof(int);
             } else if (key_type_ == DataType::Varchar) {
+                if (!std::holds_alternative<std::string>(leaf->keys_[i])) {
+                    std::cout << "DEBUG: Expected string key but got different type at index " << i << std::endl;
+                    return false;
+                }
                 std::string key_value = std::get<std::string>(leaf->keys_[i]);
                 int str_len = static_cast<int>(key_value.length());
                 if (offset + sizeof(int) + str_len + sizeof(int) >= PAGE_SIZE) {
@@ -620,6 +850,10 @@ bool BPlusTreeIndex::SaveNode(std::shared_ptr<BPlusNode> node) {
                 std::memcpy(data + offset, key_value.c_str(), str_len);
                 offset += str_len;
             } else if (key_type_ == DataType::Bool) {
+                if (!std::holds_alternative<bool>(leaf->keys_[i])) {
+                    std::cout << "DEBUG: Expected bool key but got different type at index " << i << std::endl;
+                    return false;
+                }
                 bool key_value = std::get<bool>(leaf->keys_[i]);
                 std::memcpy(data + offset, &key_value, sizeof(bool));
                 offset += sizeof(bool);
@@ -644,10 +878,18 @@ bool BPlusTreeIndex::SaveNode(std::shared_ptr<BPlusNode> node) {
         for (int i = 0; i < key_count; ++i) {
             // 根据key_type_序列化键值
             if (key_type_ == DataType::Int) {
+                if (!std::holds_alternative<int>(internal->keys_[i])) {
+                    std::cout << "DEBUG: Expected int key but got different type at internal index " << i << std::endl;
+                    return false;
+                }
                 int key_value = std::get<int>(internal->keys_[i]);
                 std::memcpy(data + offset, &key_value, sizeof(int));
                 offset += sizeof(int);
             } else if (key_type_ == DataType::Varchar) {
+                if (!std::holds_alternative<std::string>(internal->keys_[i])) {
+                    std::cout << "DEBUG: Expected string key but got different type at internal index " << i << std::endl;
+                    return false;
+                }
                 std::string key_value = std::get<std::string>(internal->keys_[i]);
                 int str_len = static_cast<int>(key_value.length());
                 std::memcpy(data + offset, &str_len, sizeof(int));
@@ -655,6 +897,10 @@ bool BPlusTreeIndex::SaveNode(std::shared_ptr<BPlusNode> node) {
                 std::memcpy(data + offset, key_value.c_str(), str_len);
                 offset += str_len;
             } else if (key_type_ == DataType::Bool) {
+                if (!std::holds_alternative<bool>(internal->keys_[i])) {
+                    std::cout << "DEBUG: Expected bool key but got different type at internal index " << i << std::endl;
+                    return false;
+                }
                 bool key_value = std::get<bool>(internal->keys_[i]);
                 std::memcpy(data + offset, &key_value, sizeof(bool));
                 offset += sizeof(bool);
@@ -705,6 +951,51 @@ int BPlusTreeIndex::CompareValues(const Value& a, const Value& b) const {
     if (a < b) return -1;
     if (a > b) return 1;
     return 0;
+}
+
+// ========== 统计信息方法 ==========
+
+int BPlusTreeIndex::GetHeight() const {
+    return height_;
+}
+
+int BPlusTreeIndex::GetNodeCount() const {
+    // 简化实现，返回根节点ID（如果存在）
+    return root_page_id_ != -1 ? 1 : 0;
+}
+
+int BPlusTreeIndex::GetKeyCount() const {
+    if (root_page_id_ == -1) return 0;
+    
+    // 遍历所有叶子节点计算总键数
+    int total_keys = 0;
+    auto current = LoadNode(root_page_id_);
+    if (!current) return 0;
+    
+    // 如果根节点是叶子节点
+    if (current->IsLeaf()) {
+        return current->GetKeyCount();
+    }
+    
+    // 如果根节点是内部节点，找到第一个叶子节点
+    auto internal = std::static_pointer_cast<BPlusInternalNode>(current);
+    if (internal->child_page_ids_.empty()) return 0;
+    
+    auto leaf = LoadNode(internal->child_page_ids_[0]);
+    if (!leaf || !leaf->IsLeaf()) return 0;
+    
+    // 遍历叶子节点链表
+    auto current_leaf = std::static_pointer_cast<BPlusLeafNode>(leaf);
+    while (current_leaf) {
+        total_keys += current_leaf->GetKeyCount();
+        if (current_leaf->next_leaf_page_id_ != -1) {
+            current_leaf = std::static_pointer_cast<BPlusLeafNode>(LoadNode(current_leaf->next_leaf_page_id_));
+        } else {
+            current_leaf = nullptr;
+        }
+    }
+    
+    return total_keys;
 }
 
 // ========== IndexManager 实现 ==========
@@ -773,6 +1064,177 @@ std::string IndexManager::GetIndexKey(const std::string& table_name, const std::
     return table_name + "." + column_name;
 }
 
+// ========== 节点合并和重新平衡逻辑 ==========
+
+bool BPlusTreeIndex::MergeLeafNodes(std::shared_ptr<BPlusLeafNode> left, std::shared_ptr<BPlusLeafNode> right) {
+    std::cout << "DEBUG: Merging leaf nodes" << std::endl;
+    
+    // 检查合并后是否会超过最大键数
+    if (left->GetKeyCount() + right->GetKeyCount() > max_keys_per_node_) {
+        std::cout << "DEBUG: Cannot merge - would exceed max keys per node" << std::endl;
+        return false;
+    }
+    
+    // 将右节点的键值对移动到左节点
+    for (size_t i = 0; i < right->keys_.size(); ++i) {
+        left->keys_.push_back(right->keys_[i]);
+        left->record_ids_.push_back(right->record_ids_[i]);
+    }
+    
+    // 更新叶子节点链表
+    left->next_leaf_page_id_ = right->next_leaf_page_id_;
+    if (right->next_leaf_page_id_ != -1) {
+        auto next_leaf = std::static_pointer_cast<BPlusLeafNode>(LoadNode(right->next_leaf_page_id_));
+        if (next_leaf) {
+            next_leaf->prev_leaf_page_id_ = left->page_id_;
+            SaveNode(next_leaf);
+        }
+    }
+    
+    // 保存左节点，删除右节点
+    if (!SaveNode(left)) {
+        std::cout << "DEBUG: Failed to save merged leaf node" << std::endl;
+        return false;
+    }
+    
+    DeallocatePage(right->page_id_);
+    std::cout << "DEBUG: Leaf nodes merged successfully" << std::endl;
+    return true;
+}
+
+bool BPlusTreeIndex::MergeInternalNodes(std::shared_ptr<BPlusInternalNode> left, std::shared_ptr<BPlusInternalNode> right) {
+    std::cout << "DEBUG: Merging internal nodes" << std::endl;
+    
+    // 检查合并后是否会超过最大键数
+    if (left->GetKeyCount() + right->GetKeyCount() + 1 > max_keys_per_node_) {
+        std::cout << "DEBUG: Cannot merge - would exceed max keys per node" << std::endl;
+        return false;
+    }
+    
+    // 添加分隔键（从父节点获取）
+    // 这里需要从父节点获取分隔键，简化实现使用右节点的第一个键
+    if (!right->keys_.empty()) {
+        left->keys_.push_back(right->keys_[0]);
+    }
+    
+    // 将右节点的键和子节点移动到左节点
+    for (size_t i = 1; i < right->keys_.size(); ++i) {
+        left->keys_.push_back(right->keys_[i]);
+    }
+    for (int child_id : right->child_page_ids_) {
+        left->child_page_ids_.push_back(child_id);
+    }
+    
+    // 保存左节点，删除右节点
+    if (!SaveNode(left)) {
+        std::cout << "DEBUG: Failed to save merged internal node" << std::endl;
+        return false;
+    }
+    
+    DeallocatePage(right->page_id_);
+    std::cout << "DEBUG: Internal nodes merged successfully" << std::endl;
+    return true;
+}
+
+bool BPlusTreeIndex::RedistributeNodes(std::shared_ptr<BPlusNode> left, std::shared_ptr<BPlusNode> right) {
+    std::cout << "DEBUG: Redistributing nodes" << std::endl;
+    
+    if (left->IsLeaf()) {
+        auto left_leaf = std::static_pointer_cast<BPlusLeafNode>(left);
+        auto right_leaf = std::static_pointer_cast<BPlusLeafNode>(right);
+        
+        // 计算总键数
+        int total_keys = left_leaf->GetKeyCount() + right_leaf->GetKeyCount();
+        int target_keys = total_keys / 2;
+        
+        // 如果左节点键数过多，移动一些到右节点
+        if (left_leaf->GetKeyCount() > target_keys) {
+            int move_count = left_leaf->GetKeyCount() - target_keys;
+            
+            // 将左节点的最后几个键值对移动到右节点
+            for (int i = 0; i < move_count; ++i) {
+                int index = left_leaf->GetKeyCount() - 1;
+                right_leaf->keys_.insert(right_leaf->keys_.begin(), left_leaf->keys_[index]);
+                right_leaf->record_ids_.insert(right_leaf->record_ids_.begin(), left_leaf->record_ids_[index]);
+                
+                left_leaf->keys_.erase(left_leaf->keys_.begin() + index);
+                left_leaf->record_ids_.erase(left_leaf->record_ids_.begin() + index);
+            }
+        }
+        // 如果右节点键数过多，移动一些到左节点
+        else if (right_leaf->GetKeyCount() > target_keys) {
+            int move_count = right_leaf->GetKeyCount() - target_keys;
+            
+            // 将右节点的前几个键值对移动到左节点
+            for (int i = 0; i < move_count; ++i) {
+                left_leaf->keys_.push_back(right_leaf->keys_[0]);
+                left_leaf->record_ids_.push_back(right_leaf->record_ids_[0]);
+                
+                right_leaf->keys_.erase(right_leaf->keys_.begin());
+                right_leaf->record_ids_.erase(right_leaf->record_ids_.begin());
+            }
+        }
+        
+        // 保存节点
+        if (!SaveNode(left_leaf) || !SaveNode(right_leaf)) {
+            std::cout << "DEBUG: Failed to save redistributed leaf nodes" << std::endl;
+            return false;
+        }
+        
+    } else {
+        auto left_internal = std::static_pointer_cast<BPlusInternalNode>(left);
+        auto right_internal = std::static_pointer_cast<BPlusInternalNode>(right);
+        
+        // 内部节点的重新分布逻辑类似
+        int total_keys = left_internal->GetKeyCount() + right_internal->GetKeyCount();
+        int target_keys = total_keys / 2;
+        
+        if (left_internal->GetKeyCount() > target_keys) {
+            int move_count = left_internal->GetKeyCount() - target_keys;
+            
+            for (int i = 0; i < move_count; ++i) {
+                int index = left_internal->GetKeyCount() - 1;
+                right_internal->keys_.insert(right_internal->keys_.begin(), left_internal->keys_[index]);
+                right_internal->child_page_ids_.insert(right_internal->child_page_ids_.begin(), 
+                                                     left_internal->child_page_ids_[index + 1]);
+                
+                left_internal->keys_.erase(left_internal->keys_.begin() + index);
+                left_internal->child_page_ids_.erase(left_internal->child_page_ids_.begin() + index + 1);
+            }
+        }
+        else if (right_internal->GetKeyCount() > target_keys) {
+            int move_count = right_internal->GetKeyCount() - target_keys;
+            
+            for (int i = 0; i < move_count; ++i) {
+                left_internal->keys_.push_back(right_internal->keys_[0]);
+                left_internal->child_page_ids_.push_back(right_internal->child_page_ids_[0]);
+                
+                right_internal->keys_.erase(right_internal->keys_.begin());
+                right_internal->child_page_ids_.erase(right_internal->child_page_ids_.begin());
+            }
+        }
+        
+        // 保存节点
+        if (!SaveNode(left_internal) || !SaveNode(right_internal)) {
+            std::cout << "DEBUG: Failed to save redistributed internal nodes" << std::endl;
+            return false;
+        }
+    }
+    
+    std::cout << "DEBUG: Nodes redistributed successfully" << std::endl;
+    return true;
+}
+
+void BPlusTreeIndex::MergeNodes(std::shared_ptr<BPlusNode> left, std::shared_ptr<BPlusNode> right) {
+    if (left->IsLeaf()) {
+        MergeLeafNodes(std::static_pointer_cast<BPlusLeafNode>(left), 
+                      std::static_pointer_cast<BPlusLeafNode>(right));
+    } else {
+        MergeInternalNodes(std::static_pointer_cast<BPlusInternalNode>(left), 
+                          std::static_pointer_cast<BPlusInternalNode>(right));
+    }
+}
+
 bool IndexManager::InsertRecord(const std::string& table_name, const Record& record, int record_id) {
     std::cout << "DEBUG: IndexManager::InsertRecord called for table=" << table_name << ", record_id=" << record_id << std::endl;
     std::cout << "DEBUG: Available indexes: " << indexes_.size() << std::endl;
@@ -815,6 +1277,75 @@ bool IndexManager::InsertRecord(const std::string& table_name, const Record& rec
             
             index->Insert(key_value, record_id);
             std::cout << "DEBUG: Index insert completed" << std::endl;
+        } else {
+            std::cout << "DEBUG: Empty record values" << std::endl;
+        }
+    }
+    return true;
+}
+
+bool IndexManager::UpdateRecord(const std::string& table_name, const Record& old_record, 
+                               const Record& new_record, int record_id) {
+    std::cout << "DEBUG: IndexManager::UpdateRecord called for table=" << table_name << ", record_id=" << record_id << std::endl;
+    
+    // 先删除旧记录
+    if (!DeleteRecord(table_name, old_record, record_id)) {
+        std::cout << "DEBUG: Failed to delete old record" << std::endl;
+        return false;
+    }
+    
+    // 再插入新记录
+    if (!InsertRecord(table_name, new_record, record_id)) {
+        std::cout << "DEBUG: Failed to insert new record" << std::endl;
+        return false;
+    }
+    
+    std::cout << "DEBUG: Record updated successfully" << std::endl;
+    return true;
+}
+
+bool IndexManager::DeleteRecord(const std::string& table_name, const Record& record, int record_id) {
+    std::cout << "DEBUG: IndexManager::DeleteRecord called for table=" << table_name << ", record_id=" << record_id << std::endl;
+    std::cout << "DEBUG: Available indexes: " << indexes_.size() << std::endl;
+    
+    // 为所有有索引的列更新索引
+    for (auto& [index_key, index] : indexes_) {
+        std::cout << "DEBUG: Checking index key: " << index_key << std::endl;
+        
+        // 解析表名和列名
+        size_t dot_pos = index_key.find('.');
+        if (dot_pos == std::string::npos) continue;
+        
+        std::string indexed_table = index_key.substr(0, dot_pos);
+        std::string indexed_column = index_key.substr(dot_pos + 1);
+        
+        std::cout << "DEBUG: Indexed table=" << indexed_table << ", column=" << indexed_column << std::endl;
+        
+        if (indexed_table != table_name) {
+            std::cout << "DEBUG: Table mismatch, skipping" << std::endl;
+            continue;
+        }
+        
+        // 这里需要根据列名找到对应的值
+        // 简化实现，假设主键列在索引0位置
+        if (!record.values_.empty()) {
+            const Value& key_value = record.values_[0];
+            
+            // 安全地打印键值
+            std::cout << "DEBUG: Deleting key=";
+            if (std::holds_alternative<int>(key_value)) {
+                std::cout << std::get<int>(key_value);
+            } else if (std::holds_alternative<std::string>(key_value)) {
+                std::cout << std::get<std::string>(key_value);
+            } else if (std::holds_alternative<bool>(key_value)) {
+                std::cout << (std::get<bool>(key_value) ? "true" : "false");
+            } else {
+                std::cout << "unknown type";
+            }
+            std::cout << ", record_id=" << record_id << " from index" << std::endl;
+            
+            index->Remove(key_value);
+            std::cout << "DEBUG: Index delete completed" << std::endl;
         } else {
             std::cout << "DEBUG: Empty record values" << std::endl;
         }
