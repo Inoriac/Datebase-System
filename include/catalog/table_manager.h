@@ -7,6 +7,7 @@
 #include "../storage/async_aliases.h"
 #include "table_schema_manager.h"
 #include "bplus_tree.h"
+#include "../log/log_config.h"
 #include <unordered_map>
 #include <vector>
 #include <memory>
@@ -92,6 +93,9 @@ private:
     std::unique_ptr<IndexManager> index_manager_;                  // 索引管理器
     std::unordered_map<std::string, TableSchema> table_schemas_;    // 表名 -> 表对象
     std::unordered_map<std::string, std::vector<int>> table_pages;  // 表名 -> 页ID列表
+    
+    // 日志器
+    std::shared_ptr<DatabaseSystem::Log::TableLogger> logger_;
 
     // 内部方法
     int FindFreeSlotInPage(int page_id, const TableSchema& schema);     // 返回下一个可写的位置

@@ -2,6 +2,7 @@
 #define EXECUTOR_H
 
 #include "execution_plan.h"
+#include "log/log_config.h"
 #include <memory>
 
 class Executor {
@@ -14,6 +15,7 @@ public:
 
 private:
     std::unique_ptr<Operator> plan_root_;
+    std::shared_ptr<DatabaseSystem::Log::ExecutionLogger> logger_;
 };
 
 #endif

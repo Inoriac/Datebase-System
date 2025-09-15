@@ -1,5 +1,6 @@
 #include "executor.h"
 #include "symbol_table.h" // 需要访问 catalog
+#include "log/log_config.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -15,7 +16,8 @@ std::unique_ptr<Tuple> CreateTableOperator::next() {
         new_table.column_order.push_back(col.first);
     }
     catalog.addTable(new_table);
-    std::cout << "Table '" << table_name << "' created successfully.\n";
+    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
+    logger->Info("Table '{}' created successfully", table_name);
     return nullptr; // 没有数据行返回
 }
 
@@ -27,7 +29,8 @@ std::unique_ptr<Tuple> InsertOperator::next() {
     }
     // TODO: 这里需要一个地方来存储实际的数据，例如一个简单的内存表
     // catalog.insertData(table_name, values);
-    std::cout << "Values inserted into table '" << table_name << "' successfully.\n";
+    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
+    logger->Info("Values inserted into table '{}' successfully", table_name);
     return nullptr;
 }
 

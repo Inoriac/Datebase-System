@@ -5,6 +5,7 @@
 #include "../../include/catalog/table_manager.h"
 #include "../../include/catalog/page.h"
 #include "../../include/catalog/table_schema_manager.h"
+#include "../../include/log/log_config.h"
 #include <cstring>
 #include <algorithm>
 #include <cctype>
@@ -173,28 +174,31 @@ static int ReadInt(const char* src) {
 }
 
 TableManager::TableManager(BufferPoolManager *bpm): buffer_pool_manager_(bpm) {
-    std::cout << "TableManager: 开始初始化..." << std::endl;
+    // 初始化日志器
+    logger_ = DatabaseSystem::Log::LogConfig::GetTableLogger();
+    
+    logger_->Info("TableManager: 开始初始化...");
     
     // 创建表结构管理器
-    std::cout << "TableManager: 创建表结构管理器..." << std::endl;
+    logger_->Info("TableManager: 创建表结构管理器...");
     schema_manager_ = new TableSchemaManager(bpm, this);
-    std::cout << "TableManager: 表结构管理器创建完成" << std::endl;
+    logger_->Info("TableManager: 表结构管理器创建完成");
     
     // 创建索引管理器
-    std::cout << "TableManager: 创建索引管理器..." << std::endl;
+    logger_->Info("TableManager: 创建索引管理器...");
     index_manager_ = std::make_unique<IndexManager>(bpm);
-    std::cout << "TableManager: 索引管理器创建完成" << std::endl;
+    logger_->Info("TableManager: 索引管理器创建完成");
     
     // 延迟加载所有表结构到内存，避免循环依赖
     // 加载根目录（页0）并恢复表首页映射，再加载所有表结构
-    std::cout << "TableManager: 加载根目录..." << std::endl;
+    logger_->Info("TableManager: 加载根目录...");
     LoadRootDirectory();
-    std::cout << "TableManager: 根目录加载完成" << std::endl;
+    logger_->Info("TableManager: 根目录加载完成");
     
     // 暂时注释掉LoadAllTableSchemas，避免循环依赖
-    // std::cout << "TableManager: 加载所有表结构..." << std::endl;
+    // logger_->Info("TableManager: 加载所有表结构...");
     // LoadAllTableSchemas();
-    std::cout << "TableManager: 初始化完成" << std::endl;
+    logger_->Info("TableManager: 初始化完成");
 }
 
 TableManager::~TableManager() {
@@ -424,12 +428,12 @@ bool TableManager::InsertRecord(const std::string &table_name, const Record &rec
     
     // 调试：只在记录ID异常时打印
     if (record_id != header.record_count - 1) {
-        std::cout << "DEBUG: Record ID mismatch! Calculated=" << record_id << ", Expected=" << (header.record_count - 1) << " for table=" << table_name << std::endl;
+        logger_->Warn("Record ID mismatch! Calculated={}, Expected={} for table={}", record_id, header.record_count - 1, table_name);
     }
     
     // 只在记录ID异常时打印
     if (record_id > 100) {
-        std::cout << "DEBUG: Calculated record_id=" << record_id << " for table=" << table_name << std::endl;
+        logger_->Debug("Calculated record_id={} for table={}", record_id, table_name);
     }
     
     // 更新索引
@@ -437,7 +441,7 @@ bool TableManager::InsertRecord(const std::string &table_name, const Record &rec
         
         // 只在记录ID异常时打印
         if (record_id > 100) {
-            std::cout << "DEBUG: Updating index for record_id=" << record_id << ", primary_key_index=" << schema.primary_key_index_ << std::endl;
+            logger_->Debug("Updating index for record_id={}, primary_key_index={}", record_id, schema.primary_key_index_);
         }
         
         // 为主键列更新索引
@@ -446,29 +450,29 @@ bool TableManager::InsertRecord(const std::string &table_name, const Record &rec
             const std::string& pk_column_name = schema.columns_[schema.primary_key_index_].column_name_;
             
             // 安全地打印键值
-            std::cout << "DEBUG: Inserting into index: table=" << table_name << ", column=" << pk_column_name << ", key=";
+            std::string key_str;
             if (std::holds_alternative<int>(key_value)) {
-                std::cout << std::get<int>(key_value);
+                key_str = std::to_string(std::get<int>(key_value));
             } else if (std::holds_alternative<std::string>(key_value)) {
-                std::cout << std::get<std::string>(key_value);
+                key_str = std::get<std::string>(key_value);
             } else if (std::holds_alternative<bool>(key_value)) {
-                std::cout << (std::get<bool>(key_value) ? "true" : "false");
+                key_str = std::get<bool>(key_value) ? "true" : "false";
             } else {
-                std::cout << "unknown type";
+                key_str = "unknown type";
             }
-            std::cout << ", record_id=" << record_id << std::endl;
+            logger_->Debug("Inserting into index: table={}, column={}, key={}, record_id={}", table_name, pk_column_name, key_str, record_id);
             
             bool success = index_manager_->InsertRecord(table_name, record, record_id);
-            std::cout << "DEBUG: Index insert result: " << (success ? "success" : "failed") << std::endl;
-            
-            if (!success) {
-                std::cout << "DEBUG: Index insert failed for record " << record_id << std::endl;
+            if (success) {
+                logger_->Debug("Index insert result: success");
+            } else {
+                logger_->Error("Index insert result: failed for record {}", record_id);
             }
         } else {
-            std::cout << "DEBUG: No primary key index or invalid index" << std::endl;
+            logger_->Debug("No primary key index or invalid index");
         }
     } else {
-        std::cout << "DEBUG: No index manager available" << std::endl;
+        logger_->Debug("No index manager available");
     }
     
     return true;
@@ -1036,26 +1040,26 @@ std::vector<std::string> TableManager::ValidateColumns(const std::string& table_
 bool TableManager::CheckPrimaryKeyUnique(const std::string& table_name, const Record& record, int exclude_record_id) {
     TableSchema* schema = GetTableSchema(table_name);
     if (!schema || schema->primary_key_index_ < 0) {
-        std::cout << "DEBUG: No primary key, returning true" << std::endl;
+        logger_->Debug("No primary key, returning true");
         return true; // 无主键，总是唯一
     }
     
     int primary_key_index = schema->primary_key_index_;
     if (primary_key_index >= static_cast<int>(record.values_.size())) {
-        std::cout << "DEBUG: Primary key index out of range" << std::endl;
+        logger_->Debug("Primary key index out of range");
         return false; // 主键列不存在
     }
     
     const Value& key_value = record.values_[primary_key_index];
     bool exists = IsPrimaryKeyValueExists(table_name, primary_key_index, key_value, exclude_record_id);
-    std::cout << "DEBUG: Primary key exists: " << exists << ", returning: " << !exists << std::endl;
+    logger_->Debug("Primary key exists: {}, returning: {}", exists, !exists);
     return !exists;
 }
 
 bool TableManager::IsPrimaryKeyValueExists(const std::string& table_name, int primary_key_index, const Value& key_value, int exclude_record_id) {
     TableSchema* schema = GetTableSchema(table_name);
     if (!schema) {
-        std::cout << "DEBUG: Schema not found" << std::endl;
+        logger_->Debug("Schema not found");
         return false;
     }
     
@@ -1063,13 +1067,13 @@ bool TableManager::IsPrimaryKeyValueExists(const std::string& table_name, int pr
     if (index_manager_ && schema->primary_key_index_ == primary_key_index) {
         const std::string& pk_column_name = schema->columns_[primary_key_index].column_name_;
         if (index_manager_->HasIndex(table_name, pk_column_name)) {
-            std::cout << "DEBUG: Using index for primary key check" << std::endl;
+            logger_->Debug("Using index for primary key check");
             std::vector<int> record_ids = index_manager_->QueryWithIndex(table_name, pk_column_name, key_value);
             
             // 如果有结果且不是要排除的记录，则主键重复
             for (int record_id : record_ids) {
                 if (record_id != exclude_record_id) {
-                    std::cout << "DEBUG: Found duplicate primary key via index!" << std::endl;
+                    logger_->Debug("Found duplicate primary key via index!");
                     return true;
                 }
             }
@@ -1078,16 +1082,16 @@ bool TableManager::IsPrimaryKeyValueExists(const std::string& table_name, int pr
     }
     
     // 回退到全表扫描
-    std::cout << "DEBUG: Falling back to full table scan for primary key check" << std::endl;
+    logger_->Debug("Falling back to full table scan for primary key check");
     
     // 检查表是否有页
     auto it = table_pages.find(table_name);
     if (it == table_pages.end() || it->second.empty()) {
-        std::cout << "DEBUG: Table has no pages, key is unique" << std::endl;
+        logger_->Debug("Table has no pages, key is unique");
         return false; // 表没有页，主键值唯一
     }
     
-    std::cout << "DEBUG: Checking " << it->second.size() << " pages for primary key" << std::endl;
+    logger_->Debug("Checking {} pages for primary key", it->second.size());
     
     const int record_size = RecordSerializer::CalculateRecordSize(*schema);
     int current_record_id = 0;
@@ -1099,11 +1103,11 @@ bool TableManager::IsPrimaryKeyValueExists(const std::string& table_name, int pr
         // 检查页是否属于正确的表
         int expected_table_id = static_cast<int>(std::hash<std::string>{}(table_name) & 0x7fffffff);
         if (header.table_id != expected_table_id) {
-            std::cout << "DEBUG: Skipping page " << page_id << " (table_id: " << header.table_id << ", expected: " << expected_table_id << ")" << std::endl;
+            logger_->Debug("Skipping page {} (table_id: {}, expected: {})", page_id, header.table_id, expected_table_id);
             continue;
         }
         
-        std::cout << "DEBUG: Page " << page_id << " has " << header.record_count << " records" << std::endl;
+        logger_->Debug("Page {} has {} records", page_id, header.record_count);
         
         for (int i = 0; i < header.record_count; i++) {
             // 跳过要排除的记录（用于更新操作）
@@ -1128,7 +1132,7 @@ bool TableManager::IsPrimaryKeyValueExists(const std::string& table_name, int pr
             // 检查主键值是否相同
             if (primary_key_index < static_cast<int>(existing_record.values_.size())) {
                 const Value& existing_key_value = existing_record.values_[primary_key_index];
-                std::cout << "DEBUG: Comparing existing key: ";
+                logger_->Debug("Comparing existing key: ");
                 if (std::holds_alternative<int>(existing_key_value)) {
                     std::cout << std::get<int>(existing_key_value);
                 } else if (std::holds_alternative<std::string>(existing_key_value)) {
@@ -1147,7 +1151,7 @@ bool TableManager::IsPrimaryKeyValueExists(const std::string& table_name, int pr
                 std::cout << std::endl;
                 
                 if (existing_key_value == key_value) {
-                    std::cout << "DEBUG: Found duplicate primary key!" << std::endl;
+                    logger_->Debug("Found duplicate primary key!");
                     return true; // 找到重复的主键值
                 }
             }
@@ -1199,7 +1203,7 @@ std::vector<Record> TableManager::SelectRecordsWithIndex(const std::string& tabl
     // 使用索引查找记录ID
     std::vector<int> record_ids = index_manager_->QueryWithIndex(table_name, column_name, key);
     
-    std::cout << "DEBUG: Index query returned " << record_ids.size() << " record IDs" << std::endl;
+    logger_->Debug("Index query returned {} record IDs", record_ids.size());
     
     // 根据记录ID获取实际记录
     auto it = table_schemas_.find(table_name);
@@ -1233,7 +1237,7 @@ std::vector<Record> TableManager::SelectRecordsWithIndex(const std::string& tabl
             
             // 检查是否在索引结果中
             if (std::find(record_ids.begin(), record_ids.end(), current_record_id) != record_ids.end()) {
-                std::cout << "DEBUG: Found record with ID " << current_record_id << std::endl;
+                logger_->Debug("Found record with ID {}", current_record_id);
                 result.push_back(rec);
             }
             
@@ -1241,7 +1245,7 @@ std::vector<Record> TableManager::SelectRecordsWithIndex(const std::string& tabl
         }
     }
     
-    std::cout << "DEBUG: Index query returned " << result.size() << " records" << std::endl;
+    logger_->Debug("Index query returned {} records", result.size());
     return result;
 }
 

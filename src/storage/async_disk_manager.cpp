@@ -5,6 +5,7 @@
 
 #include "storage/async_disk_manager.h"
 #include "../../include/catalog/page.h"
+#include "log/log_config.h"
 #include <iostream>
 #include <algorithm>
 #include <cstring>
@@ -95,11 +96,13 @@ void AsyncDiskManager::ProcessTask(std::unique_ptr<IOTask> task) {
     try {
         if (task->operation == IOOperation::READ) {
             if (task->page_id >= num_pages_) {
-                std::cout << "Invalid page read: " << task->page_id << std::endl;
+                auto logger = DatabaseSystem::Log::LogConfig::GetStorageLogger();
+                logger->Error("Invalid page read: {}", task->page_id);
                 memset(task->page_data, 0, PAGE_SIZE);
                 success = true;
             } else if (IsPageFree(task->page_id)) {
-                std::cout << "Attempted to read deleted page: " << task->page_id << std::endl;
+                auto logger = DatabaseSystem::Log::LogConfig::GetStorageLogger();
+                logger->Warn("Attempted to read deleted page: {}", task->page_id);
                 memset(task->page_data, 0, PAGE_SIZE);
                 success = true;
             } else {
@@ -183,13 +186,15 @@ std::future<bool> AsyncDiskManager::WritePagesAsync(const std::vector<int>& page
 // 同步接口（保持兼容性）
 void AsyncDiskManager::ReadPage(int page_id, char *page_data) {
     if (page_id >= num_pages_) {
-        std::cout << "Invalid page read: " << page_id << std::endl;
+        auto logger = DatabaseSystem::Log::LogConfig::GetStorageLogger();
+        logger->Error("Invalid page read: {}", page_id);
         memset(page_data, 0, PAGE_SIZE);
         return;
     }
     
     if (IsPageFree(page_id)) {
-        std::cout << "Attempted to read deleted page: " << page_id << std::endl;
+        auto logger = DatabaseSystem::Log::LogConfig::GetStorageLogger();
+        logger->Warn("Attempted to read deleted page: {}", page_id);
         memset(page_data, 0, PAGE_SIZE);
         return;
     }

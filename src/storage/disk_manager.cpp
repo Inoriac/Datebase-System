@@ -4,6 +4,7 @@
 
 #include "storage/disk_manager.h"
 #include "../../include/catalog/page.h"
+#include "log/log_config.h"
 #include <iostream>
 #include <algorithm>
 
@@ -40,14 +41,16 @@ void DiskManager::InitializePageIdManagement() {
 
 void DiskManager::ReadPage(int page_id, char *page_data) {
     if (page_id >= num_pages_) {
-        std::cout << "Invalid page read: " << page_id << std::endl;
+        auto logger = DatabaseSystem::Log::LogConfig::GetStorageLogger();
+        logger->Error("Invalid page read: {}", page_id);
         memset(page_data, 0, PAGE_SIZE);    // 初始化空页
         return;
     }
     
     // 检查页面是否已被删除
     if (IsPageFree(page_id)) {
-        std::cout << "Attempted to read deleted page: " << page_id << std::endl;
+        auto logger = DatabaseSystem::Log::LogConfig::GetStorageLogger();
+        logger->Warn("Attempted to read deleted page: {}", page_id);
         memset(page_data, 0, PAGE_SIZE);    // 初始化空页
         return;
     }

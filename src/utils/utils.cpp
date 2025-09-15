@@ -1,4 +1,5 @@
 #include "utils.h"
+#include "log/log_config.h"
 #include <iostream>
 #include <variant>
 
@@ -74,27 +75,27 @@ void printAST(ASTNode *node, int depth)
         return;
     }
 
+    auto logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
+    
     // 打印当前节点的缩进
-    for (int i = 0; i < depth; ++i)
-    {
-        std::cout << "  ";
-    }
+    std::string indent(depth * 2, ' ');
 
     // 打印节点类型和值
-    std::cout << "- " << nodeTypeToString(node->type);
+    std::string value_str;
     if (std::holds_alternative<std::string>(node->value))
     {
-        std::cout << ": " << std::get<std::string>(node->value);
+        value_str = ": " + std::get<std::string>(node->value);
     }
     else if (std::holds_alternative<int>(node->value))
     {
-        std::cout << ": " << std::get<int>(node->value);
+        value_str = ": " + std::to_string(std::get<int>(node->value));
     }
+    
     // 打印节点的位置
-    std::cout << "  (Line: " << node->location.first_line
-              << ", Column: " << node->location.first_column << ")" << std::endl;
-
-    // std::cout << std::endl;
+    std::string location_str = "  (Line: " + std::to_string(node->location.first_line) +
+                              ", Column: " + std::to_string(node->location.first_column) + ")";
+    
+    logger->Debug("{}- {}{}{}", indent, nodeTypeToString(node->type), value_str, location_str);
 
     // 递归打印所有子节点
     for (ASTNode *child : node->children)

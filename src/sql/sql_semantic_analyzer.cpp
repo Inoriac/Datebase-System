@@ -1,6 +1,7 @@
 #include "ast.h"
 #include "symbol_table.h"
 #include "semantic_error.h"
+#include "log/log_config.h"
 #include <iostream>
 #include <unordered_set>
 #include <string>
@@ -11,9 +12,10 @@
 // 打印当前正在解析的语句的AST结构
 void printCurrentStatementAST(ASTNode *statement_node)
 {
-    std::cout << "\n--- 正在解析的AST ---\n";
+    auto logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
+    logger->Debug("\n--- 正在解析的AST ---\n");
     printAST(statement_node,0);
-    std::cout << "---------------------\n\n";
+    logger->Debug("---------------------\n\n");
 }
 bool typesMatch(const ASTNode *value_node, const std::string &column_type)
 {
@@ -130,9 +132,9 @@ void check_create_statement(ASTNode *statement_node)
     {
         if (col_node->type != IDENTIFIER_NODE || col_node->children.empty())
         {
-            std::cout << "man.\n";
+            auto logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
+            logger->Error("Invalid column definition. Expected an IDENTIFIER_NODE with a type child.");
             throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid column definition. Expected an IDENTIFIER_NODE with a type child.", col_node);
-            std::cout << "man.\n";
         }
 
         std::string col_name = std::get<std::string>(col_node->value);
@@ -156,7 +158,8 @@ void check_create_statement(ASTNode *statement_node)
         new_table.column_order.push_back(col_name);
     }
     catalog.addTable(new_table);
-    std::cout << "Semantic check passed for CREATE TABLE '" << table_name << "'.\n";
+    auto logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
+    logger->Info("Semantic check passed for CREATE TABLE '{}'", table_name);
 }
 
 void check_insert_statement(ASTNode *statement_node)
@@ -196,7 +199,8 @@ void check_insert_statement(ASTNode *statement_node)
             throw SemanticError(SemanticError::TYPE_MISMATCH, "Type mismatch for column '" + col_name + "'. Expected " + col_info.type + ", but got an incompatible value.", value_node);
         }
     }
-    std::cout << "Semantic check passed for INSERT INTO '" + table_name + "'.\n";
+    auto logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
+    logger->Info("Semantic check passed for INSERT INTO '{}'", table_name);
 }
 
 void check_select_statement(ASTNode *statement_node)
@@ -290,7 +294,8 @@ void check_select_statement(ASTNode *statement_node)
         check_column_exists(col_node, available_tables);
     }
 
-    std::cout << "Semantic check passed for SELECT statement.\n";
+    auto logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
+    logger->Info("Semantic check passed for SELECT statement");
 }
 
 void check_delete_statement(ASTNode *statement_node)
@@ -325,7 +330,8 @@ void check_delete_statement(ASTNode *statement_node)
         }
         check_where_clause(where_clause_node->children[0], available_tables);
     }
-    std::cout << "Semantic check passed for DELETE TABLE '" << table_name << "'.\n";
+    auto logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
+    logger->Info("Semantic check passed for DELETE TABLE '{}'", table_name);
 }
 
 void check_update_statement(ASTNode *statement_node)
@@ -395,7 +401,8 @@ void check_update_statement(ASTNode *statement_node)
         }
         check_where_clause(where_clause_node->children[0], available_tables);
     }
-    std::cout << "Semantic check passed for UPDATE statement.\n";
+    auto logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
+    logger->Info("Semantic check passed for UPDATE statement");
 }
 
 void semantic_analysis(ASTNode *root_node)
@@ -404,7 +411,8 @@ void semantic_analysis(ASTNode *root_node)
     {
         return;
     }
-    std::cout << "--- 正在语义分析 ---\n";
+    auto logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
+    logger->Info("--- 正在语义分析 ---");
     for (ASTNode *statement_node : root_node->children)
     {
         printCurrentStatementAST(statement_node);
@@ -414,23 +422,23 @@ void semantic_analysis(ASTNode *root_node)
             {
             case CREATE_TABLE_STMT:
                 check_create_statement(statement_node);
-                std::cout << "--- check_create_statement语义分析通过 ---\n";
+                logger->Info("--- check_create_statement语义分析通过 ---");
                 break;
             case INSERT_STMT:
                 check_insert_statement(statement_node);
-                std::cout << "--- check_insert_statement语义分析通过 ---\n";
+                logger->Info("--- check_insert_statement语义分析通过 ---");
                 break;
             case SELECT_STMT:
                 check_select_statement(statement_node);
-                std::cout << "--- check_select_statement语义分析通过 ---\n";
+                logger->Info("--- check_select_statement语义分析通过 ---");
                 break;
             case DELETE_STMT:
                 check_delete_statement(statement_node);
-                std::cout << "--- check_delete_statement语义分析通过 ---\n";
+                logger->Info("--- check_delete_statement语义分析通过 ---");
                 break;
             case UPDATE_STMT:
                 check_update_statement(statement_node);
-                std::cout << "--- check_update_statement语义分析通过 ---\n";
+                logger->Info("--- check_update_statement语义分析通过 ---");
                 break;
             }
         }
