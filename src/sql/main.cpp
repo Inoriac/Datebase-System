@@ -20,7 +20,7 @@ ASTNode *createMockCreateTableAst_order();
 ASTNode *createMockInsertAst();
 ASTNode *createMockInsertAst_order();
 ASTNode *createMockInsertWithColumnsAst();
-
+ASTNode *createMockInsertWithColumnsAst_order();
 
 ASTNode *createMockSelectAst();
 
@@ -85,6 +85,8 @@ int main()
         root_node->addChild(insertAst_order);
         ASTNode *insertAst_colume = createMockInsertWithColumnsAst();
         root_node->addChild(insertAst_colume);
+        ASTNode *insertAst_colume_order = createMockInsertWithColumnsAst_order();
+        root_node->addChild(insertAst_colume_order);
 
         // 3. 添加 SELECT 语句
         ASTNode *selectAst = createMockSelectAst();
@@ -231,46 +233,6 @@ ASTNode *createMockCreateTableAst_order()
 
     return create_stmt;
 }
-ASTNode *createMockInsertWithColumnsAst()
-{
-    // 根节点（INSERT_STMT）
-    ASTNode *insert_stmt = new ASTNode(INSERT_STMT, "");
-
-    // 表名节点
-    ASTNode *table_name = new ASTNode(IDENTIFIER_NODE, "users");
-    insert_stmt->addChild(table_name);
-
-    // 显式列名列表节点
-    ASTNode *column_list = new ASTNode(COLUMN_LIST, "");
-    insert_stmt->addChild(column_list);
-    
-    // 向列名列表节点添加子节点
-    ASTNode *name_col = new ASTNode(IDENTIFIER_NODE, "name");
-    column_list->addChild(name_col);
-    
-    ASTNode *id_col = new ASTNode(IDENTIFIER_NODE, "id");
-    column_list->addChild(id_col);
-
-    ASTNode *age_col = new ASTNode(IDENTIFIER_NODE, "age");
-    column_list->addChild(age_col);
-
-    // 值列表节点
-    ASTNode *values_list = new ASTNode(VALUES_LIST, "");
-    insert_stmt->addChild(values_list);
-
-    // 字符串常量值节点
-    ASTNode *string_val = new ASTNode(STRING_LITERAL_NODE, "Alice");
-    values_list->addChild(string_val);
-
-    // 整型常量值节点
-    ASTNode *int_val = new ASTNode(INTEGER_LITERAL_NODE, 102);
-    values_list->addChild(int_val);
-
-    ASTNode *int_val_ = new ASTNode(INTEGER_LITERAL_NODE, 25);
-    values_list->addChild(int_val_);
-
-    return insert_stmt;
-}
 
 ASTNode *createMockInsertAst()
 {
@@ -316,6 +278,81 @@ ASTNode *createMockInsertAst_order()
     values_list->addChild(int_val);
 
     // user_id
+    ASTNode *int_val_ = new ASTNode(INTEGER_LITERAL_NODE, 101);
+    values_list->addChild(int_val_);
+
+    return insert_stmt;
+}
+ASTNode *createMockInsertWithColumnsAst()
+{
+    // 根节点（INSERT_STMT）
+    ASTNode *insert_stmt = new ASTNode(INSERT_STMT, "");
+
+    // 表名节点
+    ASTNode *table_name = new ASTNode(IDENTIFIER_NODE, "users");
+    insert_stmt->addChild(table_name);
+
+    // 显式列名列表节点
+    ASTNode *column_list = new ASTNode(COLUMN_LIST, "");
+    insert_stmt->addChild(column_list);
+
+    // 向列名列表节点添加子节点
+    ASTNode *name_col = new ASTNode(IDENTIFIER_NODE, "name");
+    column_list->addChild(name_col);
+
+    ASTNode *id_col = new ASTNode(IDENTIFIER_NODE, "id");
+    column_list->addChild(id_col);
+
+    ASTNode *age_col = new ASTNode(IDENTIFIER_NODE, "age");
+    column_list->addChild(age_col);
+
+    // 值列表节点
+    ASTNode *values_list = new ASTNode(VALUES_LIST, "");
+    insert_stmt->addChild(values_list);
+
+    // 字符串常量值节点
+    ASTNode *string_val = new ASTNode(STRING_LITERAL_NODE, "Alice");
+    values_list->addChild(string_val);
+
+    // 整型常量值节点
+    ASTNode *int_val = new ASTNode(INTEGER_LITERAL_NODE, 102);
+    values_list->addChild(int_val);
+
+    ASTNode *int_val_ = new ASTNode(INTEGER_LITERAL_NODE, 25);
+    values_list->addChild(int_val_);
+
+    return insert_stmt;
+}
+
+ASTNode *createMockInsertWithColumnsAst_order()
+{
+    // 根节点（INSERT_STMT）
+    ASTNode *insert_stmt = new ASTNode(INSERT_STMT, "");
+
+    // 表名节点
+    ASTNode *table_name = new ASTNode(IDENTIFIER_NODE, "orders");
+    insert_stmt->addChild(table_name);
+
+    // 显式列名列表节点
+    ASTNode *column_list = new ASTNode(COLUMN_LIST, "");
+    insert_stmt->addChild(column_list);
+
+    // 向列名列表节点添加子节点
+    // ASTNode *order_id_col = new ASTNode(IDENTIFIER_NODE, "id");//todo
+    ASTNode *order_id_col = new ASTNode(IDENTIFIER_NODE, "order_id");//todo
+    column_list->addChild(order_id_col);
+
+    ASTNode *user_id_col = new ASTNode(IDENTIFIER_NODE, "user_id");
+    column_list->addChild(user_id_col);
+
+    // 值列表节点
+    ASTNode *values_list = new ASTNode(VALUES_LIST, "");
+    insert_stmt->addChild(values_list);
+
+    // 整型常量值节点
+    ASTNode *int_val = new ASTNode(INTEGER_LITERAL_NODE, 10001);
+    values_list->addChild(int_val);
+
     ASTNode *int_val_ = new ASTNode(INTEGER_LITERAL_NODE, 101);
     values_list->addChild(int_val_);
 
