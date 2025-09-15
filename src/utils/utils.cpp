@@ -90,7 +90,11 @@ void printAST(ASTNode *node, int depth)
     {
         std::cout << ": " << std::get<int>(node->value);
     }
-    std::cout << std::endl;
+    // 打印节点的位置
+    std::cout << "  (Line: " << node->location.first_line
+              << ", Column: " << node->location.first_column << ")" << std::endl;
+
+    // std::cout << std::endl;
 
     // 递归打印所有子节点
     for (ASTNode *child : node->children)
