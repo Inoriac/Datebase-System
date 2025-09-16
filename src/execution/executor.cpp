@@ -7,6 +7,85 @@
 #include <iostream>
 #include <stdexcept>
 
+// 从 AST 生成条件字符串
+static std::string build_condition_from_where(ASTNode* where) {
+    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
+    logger->Info("build_condition_from_where: where={}, children.size()={}", 
+                where ? static_cast<int>(where->type) : -1, 
+                where ? where->children.size() : 0);
+    
+    if (!where || where->children.empty()) {
+        logger->Info("build_condition_from_where: returning empty string");
+        return "";
+    }
+
+    // 如果传入的where节点本身就是expression节点（比较操作符）
+    ASTNode* expr = where;
+    if (where->type == WHERE_CLAUSE && !where->children.empty()) {
+        expr = where->children[0];
+    }
+
+    if (!expr) {
+        return "";
+    }
+
+    // 检查是否是支持的操作符类型
+    bool is_supported_operator = (expr->type == BINARY_EXPR ||
+                                 expr->type == EQUAL_OPERATOR ||
+                                 expr->type == GREATER_THAN_OPERATOR ||
+                                 expr->type == GREATER_THAN_OR_EQUAL_OPERATOR ||
+                                 expr->type == LESS_THAN_OPERATOR ||
+                                 expr->type == LESS_THAN_OR_EQUAL_OPERATOR);
+
+    if (!is_supported_operator) {
+        return "";
+    }
+
+    if (expr->children.size() < 2) {
+        return "";
+    }
+
+    std::string lhs, op, rhs;
+
+    // children[0]: IDENTIFIER_NODE (列名)
+    if (expr->children[0]->type == IDENTIFIER_NODE) {
+        if (std::holds_alternative<std::string>(expr->children[0]->value))
+            lhs = std::get<std::string>(expr->children[0]->value);
+    }
+
+    // 操作符在expr节点本身的value中
+    if (std::holds_alternative<std::string>(expr->value))
+        op = std::get<std::string>(expr->value);
+
+    // children[1]: INTEGER_LITERAL_NODE 或 STRING_LITERAL_NODE (值)
+    if (expr->children[1]->type == INTEGER_LITERAL_NODE) {
+        if (std::holds_alternative<int>(expr->children[1]->value))
+            rhs = std::to_string(std::get<int>(expr->children[1]->value));
+        else if (std::holds_alternative<std::string>(expr->children[1]->value))
+            rhs = std::get<std::string>(expr->children[1]->value);
+    } else if (expr->children[1]->type == STRING_LITERAL_NODE) {
+        if (std::holds_alternative<std::string>(expr->children[1]->value)) {
+            std::string s = std::get<std::string>(expr->children[1]->value);
+            if (!s.empty() && (s.front() == '\'' || s.front() == '"') && s.back() == s.front()) {
+                if (s.size() >= 2) s = s.substr(1, s.size()-2);
+            }
+            rhs = "'" + s + "'";
+        }
+    } else if (expr->children[1]->type == IDENTIFIER_NODE) {
+        if (std::holds_alternative<std::string>(expr->children[1]->value))
+            rhs = std::get<std::string>(expr->children[1]->value);
+    }
+
+    if (lhs.empty() || op.empty() || rhs.empty()) {
+        logger->Info("build_condition_from_where: lhs='{}', op='{}', rhs='{}' - returning empty", lhs, op, rhs);
+        return "";
+    }
+
+    std::string result = lhs + op + rhs;
+    logger->Info("build_condition_from_where: final result='{}'", result);
+    return result;
+}
+
 // 全局的内存数据存储
 std::unordered_map<std::string, std::vector<Tuple>> in_memory_data;
 
@@ -117,11 +196,6 @@ std::unique_ptr<Tuple> InsertOperator::next()
                     bool bool_val = std::get<bool>(val);
                     record.AddValue(Value(bool_val));
                     logger->Info("Added value {}: bool={}", i, bool_val);
-                } else if (std::holds_alternative<double>(val)) {
-                    double double_val = std::get<double>(val);
-                    // 将double转换为int
-                    record.AddValue(Value(static_cast<int>(double_val)));
-                    logger->Info("Added value {}: double={} -> int={}", i, double_val, static_cast<int>(double_val));
                 } else {
                     logger->Error("Unknown variant type for value {}", i);
                 }
@@ -153,7 +227,7 @@ std::unique_ptr<Tuple> InsertOperator::next()
         } else {
             // 有显式列名，需要根据表定义重新排序值
             final_tuple.resize(table_info.column_order.size());
-            std::unordered_map<std::string, std::variant<int, std::string, double, bool>> value_map;
+            std::unordered_map<std::string, std::variant<int, std::string, bool>> value_map;
             for (size_t i = 0; i < column_names.size(); ++i) {
                 value_map[column_names[i]] = values[i];
             }
@@ -225,8 +299,6 @@ std::unique_ptr<Tuple> SeqScanOperator::next()
                 std::cout << "string:" << std::get<std::string>(val) << " ";
             } else if (std::holds_alternative<bool>(val)) {
                 std::cout << "bool:" << std::get<bool>(val) << " ";
-            } else if (std::holds_alternative<double>(val)) {
-                std::cout << "double:" << std::get<double>(val) << " ";
             } else {
                 std::cout << "unknown:";
             }
@@ -260,22 +332,80 @@ std::unique_ptr<Tuple> SeqScanOperator::next()
 // FilterOperator (迭代模型)
 std::unique_ptr<Tuple> FilterOperator::next()
 {
-    std::unique_ptr<Tuple> current_tuple = nullptr;
-    do
-    {
-        current_tuple = child->next();
-        if (current_tuple == nullptr)
-        {
-            return nullptr; // 没有更多数据了
+    // 首次调用时，直接使用TableManager的SelectColumnsWithCondition方法
+    if (current_row_index == 0) {
+        // 获取表名（从SeqScanOperator中获取）
+        std::string table_name = "";
+        if (child && child->type == SEQ_SCAN_OP) {
+            SeqScanOperator* seq_scan = static_cast<SeqScanOperator*>(child.get());
+            table_name = seq_scan->table_name;
         }
-        // 使用通用的求值函数来评估 WHERE 条件
-        if (evaluateCondition(*current_tuple, condition))
-        {
-            return current_tuple;
-        }
-    } while (current_tuple != nullptr);
 
-    return nullptr;
+        if (table_name.empty() || !table_manager_) {
+            return nullptr;
+        }
+
+        // 构建条件字符串
+        std::string condition_str = build_condition_from_where(condition);
+        auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
+        logger->Info("FilterOperator: table_name='{}', condition_str='{}'", table_name, condition_str);
+        
+        // 添加调试信息：检查条件解析
+        if (condition) {
+            logger->Info("FilterOperator: condition node type={}, children.size()={}", 
+                        static_cast<int>(condition->type), condition->children.size());
+        }
+
+        // 获取要选择的列名
+        std::vector<std::string> select_columns;
+
+        // 检查是否有ProjectOperator指定了列
+        if (child && child->type == PROJECT_OP) {
+            ProjectOperator* proj_op = static_cast<ProjectOperator*>(child.get());
+            select_columns = proj_op->columns;
+        }
+
+        // 如果没有指定列，或者指定了"*"，则选择所有列
+        if (select_columns.empty() || (select_columns.size() == 1 && select_columns[0] == "*")) {
+            TableSchema* schema = table_manager_->GetTableSchema(table_name);
+            if (schema) {
+                for (const auto& col : schema->columns_) {
+                    select_columns.push_back(col.column_name_);
+                }
+            }
+        }
+
+        // 使用TableManager的SelectColumnsWithCondition方法
+        std::vector<Record> records;
+        if (condition_str.empty()) {
+            records = table_manager_->SelectColumns(table_name, select_columns);
+            logger->Info("FilterOperator: SelectColumns returned {} records", records.size());
+        } else {
+            records = table_manager_->SelectColumnsWithCondition(table_name, select_columns, condition_str);
+            logger->Info("FilterOperator: SelectColumnsWithCondition returned {} records with condition '{}'", 
+                        records.size(), condition_str);
+        }
+
+        // 将Record转换为Tuple
+        all_records_.clear();
+        for (const auto& record : records) {
+            Tuple tuple;
+            for (const auto& value : record.values_) {
+                tuple.push_back(value);
+            }
+            all_records_.push_back(tuple);
+        }
+    }
+
+    // 如果没有更多数据，返回空指针
+    if (current_row_index >= all_records_.size()) {
+        return nullptr;
+    }
+
+    // 返回当前行数据的副本，并移动到下一行
+    auto result_tuple = std::make_unique<Tuple>(all_records_[current_row_index]);
+    current_row_index++;
+    return result_tuple;
 }
 
 // FilterOperator的evaluateCondition方法实现
@@ -299,7 +429,7 @@ bool FilterOperator::evaluateCondition(const Tuple& tuple, ASTNode* condition) {
         ASTNode* right = condition->children[1];
         
         // 获取左操作数的值
-        std::variant<int, std::string, double, bool> left_val;
+        LiteralValue left_val;
         if (left->type == IDENTIFIER_NODE) {
             // 列名，从tuple中获取值
             std::string col_name = std::get<std::string>(left->value);
@@ -319,7 +449,7 @@ bool FilterOperator::evaluateCondition(const Tuple& tuple, ASTNode* condition) {
         }
         
         // 获取右操作数的值
-        std::variant<int, std::string, double, bool> right_val = evaluateLiteral(right);
+        LiteralValue right_val = evaluateLiteral(right);
         
         // 比较操作
         bool result = false;
@@ -383,41 +513,84 @@ bool FilterOperator::evaluateCondition(const Tuple& tuple, ASTNode* condition) {
     return false;
 }
 
-// ProjectOperator (迭代模型)
+// ProjectOperator (迭代模型) - 简化实现，直接返回子算子的结果
 std::unique_ptr<Tuple> ProjectOperator::next()
 {
-    std::unique_ptr<Tuple> input_tuple = child->next();
-    if (input_tuple == nullptr)
-    {
+    // 直接返回子算子的结果，因为FilterOperator已经处理了列选择和条件过滤
+    return child->next();
+}
+std::unique_ptr<Tuple> DeleteOperator::next() {
+    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
+    
+    if (!child) {
+        logger->Error("DeleteOperator: No child operator");
         return nullptr;
     }
-
-    // 从tables映射获取表信息
-    auto it = tables.find(table_name);
-    if (it == tables.end()) {
-        throw std::runtime_error("Table '" + table_name + "' not found in tables mapping.");
+    
+    // 获取要删除的记录
+    std::vector<Tuple> tuples_to_delete;
+    std::unique_ptr<Tuple> tuple;
+    while ((tuple = child->next()) != nullptr) {
+        tuples_to_delete.push_back(*tuple);
     }
-    const TableInfo &table_info = *it->second;
-    auto result_tuple = std::make_unique<Tuple>();
-
-    for (const auto &col_name : columns)
-    {
-        int index = -1;
-        for (size_t i = 0; i < table_info.column_order.size(); ++i)
-        {
-            if (table_info.column_order[i] == col_name)
-            {
-                index = i;
-                break;
-            }
-        }
-        if (index != -1)
-        {
-            result_tuple->push_back((*input_tuple)[index]);
+    
+    logger->Info("DeleteOperator: Found {} records to delete", tuples_to_delete.size());
+    
+    if (tuples_to_delete.empty()) {
+        logger->Info("No records to delete");
+        return nullptr;
+    }
+    
+    // 从child operator获取表名
+    std::string table_name;
+    if (child->type == SEQ_SCAN_OP) {
+        SeqScanOperator* scan_op = static_cast<SeqScanOperator*>(child.get());
+        table_name = scan_op->table_name;
+    } else if (child->type == FILTER_OP) {
+        FilterOperator* filter_op = static_cast<FilterOperator*>(child.get());
+        // 从FilterOperator获取表名
+        if (filter_op->child && filter_op->child->type == SEQ_SCAN_OP) {
+            SeqScanOperator* scan_op = static_cast<SeqScanOperator*>(filter_op->child.get());
+            table_name = scan_op->table_name;
         }
     }
-    return result_tuple;
+    
+    if (table_name.empty()) {
+        logger->Error("DeleteOperator: Could not determine table name");
+        return nullptr;
+    }
+    
+    logger->Info("DeleteOperator: Deleting records from table '{}'", table_name);
+    
+    // 使用原始的WHERE条件删除所有匹配的记录
+    // 由于TableManager的DeleteRecordsWithCondition只支持简单条件，我们使用原始的WHERE条件
+    int deleted_count = 0;
+    
+    // 从child operator获取原始的WHERE条件
+    std::string where_condition = "";
+    if (child && child->type == FILTER_OP) {
+        FilterOperator* filter_op = static_cast<FilterOperator*>(child.get());
+        where_condition = build_condition_from_where(filter_op->condition);
+        logger->Info("DeleteOperator: Using original WHERE condition: '{}'", where_condition);
+    }
+    
+    // 使用原始的WHERE条件删除所有匹配的记录
+    if (table_manager_ && !where_condition.empty()) {
+        int result = table_manager_->DeleteRecordsWithCondition(table_name, where_condition);
+        if (result > 0) {
+            deleted_count = result;
+            logger->Info("DeleteOperator: Successfully deleted {} record(s) with condition '{}'", result, where_condition);
+        } else {
+            logger->Warn("DeleteOperator: Failed to delete records with condition: '{}'", where_condition);
+        }
+    }
+    
+    logger->Info("DeleteOperator: Total deleted records: {}", deleted_count);
+    
+    // DELETE操作不返回数据，返回nullptr表示完成
+    return nullptr;
 }
+
 std::unique_ptr<Tuple> UpdateOperator::next()
 {
     // 获取需要更新的元组
@@ -454,7 +627,7 @@ std::unique_ptr<Tuple> UpdateOperator::next()
 
     // 找出所有更新操作的目标列的索引和对应的值
     std::vector<int> update_indices;
-    std::vector<std::variant<int, std::string, double, bool>> update_values;
+    std::vector<std::variant<int, std::string, bool>> update_values;
 
     for (const auto &update_pair : updates)
     {
@@ -477,7 +650,7 @@ std::unique_ptr<Tuple> UpdateOperator::next()
             update_indices.push_back(col_index);
             // 确保 evaluateLiteral 返回的 variant 类型与 update_values 的类型兼容
             // 现在类型已经统一，直接使用
-            auto literal_value = evaluateLiteral(value_node);
+            LiteralValue literal_value = evaluateLiteral(value_node);
             logger->Info("Evaluated literal value type: {}", typeid(literal_value).name());
             update_values.push_back(literal_value);
         }
@@ -492,107 +665,136 @@ std::unique_ptr<Tuple> UpdateOperator::next()
     size_t updated_count = 0;
     
     if (table_manager_) {
-        // 使用TableManager更新数据
-        for (const auto &tuple_to_update : tuples_to_update) {
-            // 将Tuple转换为Record
-            Record record;
-            for (size_t i = 0; i < tuple_to_update.size(); ++i) {
-                const auto &val = tuple_to_update[i];
+        // 构建WHERE条件字符串
+        std::string where_condition = "";
+        if (child && child->type == FILTER_OP) {
+            FilterOperator* filter_op = static_cast<FilterOperator*>(child.get());
+            where_condition = build_condition_from_where(filter_op->condition);
+        }
+        
+        logger->Info("Using UpdateRecordsWithCondition with condition: '{}'", where_condition);
+        
+        // 使用UpdateRecordsWithCondition方法更新所有匹配的记录
+        // 这个方法会为每个匹配的记录创建更新后的版本
+        int result = 0;
+        
+        // 使用原始的WHERE条件更新所有匹配的记录
+        logger->Info("Using original WHERE condition: '{}'", where_condition);
+        
+        // 创建更新后的记录模板
+        if (!tuples_to_update.empty()) {
+            // 使用第一条记录的更新后版本作为模板
+            Record updated_record;
+            const auto &first_tuple = tuples_to_update[0];
+            
+            logger->Info("Creating updated record from tuple with {} values", first_tuple.size());
+            
+            // 首先添加所有原始值
+            for (size_t i = 0; i < first_tuple.size(); ++i) {
+                const auto &val = first_tuple[i];
                 if (std::holds_alternative<int>(val)) {
-                    record.AddValue(Value(std::get<int>(val)));
+                    updated_record.AddValue(Value(std::get<int>(val)));
+                    logger->Info("Added int value: {}", std::get<int>(val));
                 } else if (std::holds_alternative<std::string>(val)) {
-                    record.AddValue(Value(std::get<std::string>(val)));
+                    updated_record.AddValue(Value(std::get<std::string>(val)));
+                    logger->Info("Added string value: '{}'", std::get<std::string>(val));
                 } else if (std::holds_alternative<bool>(val)) {
-                    record.AddValue(Value(std::get<bool>(val)));
+                    updated_record.AddValue(Value(std::get<bool>(val)));
+                    logger->Info("Added bool value: {}", std::get<bool>(val));
                 }
             }
             
-            // 应用更新
+            // 然后应用更新
             for (size_t i = 0; i < update_indices.size(); ++i) {
                 int col_index = update_indices[i];
                 const auto &new_val = update_values[i];
                 
-                if (std::holds_alternative<int>(new_val)) {
-                    record.values_[col_index] = Value(std::get<int>(new_val));
-                } else if (std::holds_alternative<std::string>(new_val)) {
-                    record.values_[col_index] = Value(std::get<std::string>(new_val));
-                } else if (std::holds_alternative<bool>(new_val)) {
-                    record.values_[col_index] = Value(std::get<bool>(new_val));
-                }
-            }
-            
-            // 使用TableManager更新记录
-            // 需要根据主键找到正确的记录ID
-            std::vector<Record> all_records = table_manager_->SelectRecords(table_name);
-            logger->Info("Found {} records in table '{}' for update", all_records.size(), table_name);
-            int target_record_id = -1;
-            
-            // 根据主键找到要更新的记录ID
-            for (size_t i = 0; i < all_records.size(); ++i) {
-                if (all_records[i].values_.size() > 0) {
-                    // 比较主键值（假设第一列是主键）
-                    const Value& existing_key = all_records[i].values_[0];
-                    const auto& new_key_variant = tuple_to_update[0];
+                logger->Info("Updating column index {} with new value", col_index);
+                
+                // 根据目标列的类型来转换值
+                if (schema && col_index < static_cast<int>(schema->columns_.size())) {
+                    DataType target_type = schema->columns_[col_index].type_;
                     
-                    bool key_match = false;
-                    
-                    // 将Tuple中的variant转换为Value进行比较
-                    logger->Info("Comparing record {}: existing_key type={}, new_key type={}", 
-                                i, typeid(existing_key).name(), typeid(new_key_variant).name());
-                    
-                    if (std::holds_alternative<int>(existing_key)) {
-                        int existing_int = std::get<int>(existing_key);
-                        logger->Info("Existing key (int): {}", existing_int);
-                        if (std::holds_alternative<int>(new_key_variant)) {
-                            int new_int = std::get<int>(new_key_variant);
-                            key_match = (existing_int == new_int);
-                            logger->Info("New key (int): {}, match: {}", new_int, key_match);
-                        } else if (std::holds_alternative<std::string>(new_key_variant)) {
+                    if (target_type == DataType::Int) {
+                        // 目标列是int类型，需要转换
+                        if (std::holds_alternative<int>(new_val)) {
+                            updated_record.values_[col_index] = Value(std::get<int>(new_val));
+                            logger->Info("Updated column {} to int value: {}", col_index, std::get<int>(new_val));
+                        } else if (std::holds_alternative<std::string>(new_val)) {
+                            // 将字符串转换为整数
                             try {
-                                int new_int = std::stoi(std::get<std::string>(new_key_variant));
-                                key_match = (existing_int == new_int);
-                                logger->Info("New key (string->int): {}, match: {}", new_int, key_match);
-                            } catch (...) {
-                                key_match = false;
-                                logger->Info("Failed to convert string to int");
+                                int int_val = std::stoi(std::get<std::string>(new_val));
+                                updated_record.values_[col_index] = Value(int_val);
+                                logger->Info("Updated column {} to int value: {} (converted from string)", col_index, int_val);
+                            } catch (const std::exception& e) {
+                                logger->Error("Failed to convert string '{}' to int for column {}", std::get<std::string>(new_val), col_index);
+                                continue;
                             }
-                        } else if (std::holds_alternative<double>(new_key_variant)) {
-                            int new_int = static_cast<int>(std::get<double>(new_key_variant));
-                            key_match = (existing_int == new_int);
-                            logger->Info("New key (double->int): {}, match: {}", new_int, key_match);
+                        } else if (std::holds_alternative<bool>(new_val)) {
+                            // 将布尔值转换为整数
+                            int int_val = std::get<bool>(new_val) ? 1 : 0;
+                            updated_record.values_[col_index] = Value(int_val);
+                            logger->Info("Updated column {} to int value: {} (converted from bool)", col_index, int_val);
                         }
-                    } else if (std::holds_alternative<std::string>(existing_key)) {
-                        std::string existing_str = std::get<std::string>(existing_key);
-                        logger->Info("Existing key (string): '{}'", existing_str);
-                        if (std::holds_alternative<std::string>(new_key_variant)) {
-                            std::string new_str = std::get<std::string>(new_key_variant);
-                            key_match = (existing_str == new_str);
-                            logger->Info("New key (string): '{}', match: {}", new_str, key_match);
-                        } else if (std::holds_alternative<int>(new_key_variant)) {
-                            std::string new_str = std::to_string(std::get<int>(new_key_variant));
-                            key_match = (existing_str == new_str);
-                            logger->Info("New key (int->string): '{}', match: {}", new_str, key_match);
+                    } else if (target_type == DataType::Varchar) {
+                        // 目标列是字符串类型
+                        if (std::holds_alternative<std::string>(new_val)) {
+                            updated_record.values_[col_index] = Value(std::get<std::string>(new_val));
+                            logger->Info("Updated column {} to string value: '{}'", col_index, std::get<std::string>(new_val));
+                        } else if (std::holds_alternative<int>(new_val)) {
+                            // 将整数转换为字符串
+                            std::string str_val = std::to_string(std::get<int>(new_val));
+                            updated_record.values_[col_index] = Value(str_val);
+                            logger->Info("Updated column {} to string value: '{}' (converted from int)", col_index, str_val);
+                        } else if (std::holds_alternative<bool>(new_val)) {
+                            // 将布尔值转换为字符串
+                            std::string str_val = std::get<bool>(new_val) ? "true" : "false";
+                            updated_record.values_[col_index] = Value(str_val);
+                            logger->Info("Updated column {} to string value: '{}' (converted from bool)", col_index, str_val);
+                        }
+                    } else if (target_type == DataType::Bool) {
+                        // 目标列是布尔类型
+                        if (std::holds_alternative<bool>(new_val)) {
+                            updated_record.values_[col_index] = Value(std::get<bool>(new_val));
+                            logger->Info("Updated column {} to bool value: {}", col_index, std::get<bool>(new_val));
+                        } else if (std::holds_alternative<int>(new_val)) {
+                            // 将整数转换为布尔值
+                            bool bool_val = std::get<int>(new_val) != 0;
+                            updated_record.values_[col_index] = Value(bool_val);
+                            logger->Info("Updated column {} to bool value: {} (converted from int)", col_index, bool_val);
+                        } else if (std::holds_alternative<std::string>(new_val)) {
+                            // 将字符串转换为布尔值
+                            std::string str_val = std::get<std::string>(new_val);
+                            std::transform(str_val.begin(), str_val.end(), str_val.begin(), ::tolower);
+                            bool bool_val = (str_val == "true" || str_val == "1");
+                            updated_record.values_[col_index] = Value(bool_val);
+                            logger->Info("Updated column {} to bool value: {} (converted from string)", col_index, bool_val);
                         }
                     }
-                    
-                    if (key_match) {
-                        target_record_id = static_cast<int>(i);
-                        break;
+                } else {
+                    // 没有schema信息，直接使用原始值
+                    if (std::holds_alternative<int>(new_val)) {
+                        updated_record.values_[col_index] = Value(std::get<int>(new_val));
+                        logger->Info("Updated column {} to int value: {}", col_index, std::get<int>(new_val));
+                    } else if (std::holds_alternative<std::string>(new_val)) {
+                        updated_record.values_[col_index] = Value(std::get<std::string>(new_val));
+                        logger->Info("Updated column {} to string value: '{}'", col_index, std::get<std::string>(new_val));
+                    } else if (std::holds_alternative<bool>(new_val)) {
+                        updated_record.values_[col_index] = Value(std::get<bool>(new_val));
+                        logger->Info("Updated column {} to bool value: {}", col_index, std::get<bool>(new_val));
                     }
                 }
             }
             
-            if (target_record_id >= 0) {
-                if (table_manager_->UpdateRecord(table_name, target_record_id, record)) {
-                    updated_count++;
-                    logger->Info("Updated record with ID {} in table '{}'", target_record_id, table_name);
-                } else {
-                    logger->Error("Failed to update record with ID {} in table '{}'", target_record_id, table_name);
-                }
-            } else {
-                logger->Error("Could not find record to update in table '{}'", table_name);
-            }
+            logger->Info("Created updated record with {} values", updated_record.values_.size());
+            
+            // 使用原始的WHERE条件更新所有匹配的记录
+            result = table_manager_->UpdateRecordsWithCondition(table_name, where_condition, updated_record);
+            logger->Info("UpdateRecordsWithCondition returned: {} updated records", result);
         }
+        
+        updated_count = static_cast<size_t>(result);
+        logger->Info("Total updated records: {}", result);
     } else {
         // 回退到内存模式
         std::vector<Tuple> &table_data = in_memory_data[table_name];
@@ -658,7 +860,7 @@ std::vector<Tuple> Executor::execute()
     {
     case CREATE_TABLE_OP:
     case INSERT_OP:
-    // case DELETE_OP:
+    case DELETE_OP:
     case UPDATE_OP:
         // 非迭代型操作，只需调用一次 next()
         plan_root_->next();

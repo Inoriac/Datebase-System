@@ -176,9 +176,12 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
         std::unique_ptr<Operator> scan_op = std::make_unique<SeqScanOperator>(table_name, table_manager_);
 
         // 2. 创建 FilterOperator
-        std::unique_ptr<Operator> filter_op = std::make_unique<FilterOperator>(std::move(scan_op), where_node->children[0], tables);
+        std::unique_ptr<Operator> filter_op = std::make_unique<FilterOperator>(std::move(scan_op), where_node->children[0], table_manager_);
 
-        return filter_op; // DELETE 的最终算子也可以是 Filter，由后续执行器处理
+        // 3. 创建 DeleteOperator
+        std::unique_ptr<Operator> delete_op = std::make_unique<DeleteOperator>(std::move(filter_op), table_manager_);
+
+        return delete_op; // DELETE 的最终算子是 DeleteOperator
     }
     case UPDATE_STMT:
     {
@@ -216,7 +219,7 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
             ASTNode *where_node = node->children[2];
             if (!where_node->children.empty())
             {
-                plan = std::make_unique<FilterOperator>(std::move(plan), where_node->children[0], tables);
+                plan = std::make_unique<FilterOperator>(std::move(plan), where_node->children[0], table_manager_);
             }
         }
 

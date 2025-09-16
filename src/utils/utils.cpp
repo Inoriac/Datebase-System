@@ -159,8 +159,8 @@ LiteralValue evaluateLiteral(ASTNode* node) {
             std::cout << "evaluateLiteral: string value='" << val << "'" << std::endl;
             return val;
         } else if constexpr (std::is_same_v<T, double>) {
-            std::cout << "evaluateLiteral: double value=" << val << std::endl;
-            return val;
+            std::cout << "evaluateLiteral: double value=" << val << ", converting to int" << std::endl;
+            return static_cast<int>(val);
         } else if constexpr (std::is_same_v<T, bool>) {
             std::cout << "evaluateLiteral: bool value=" << val << std::endl;
             return val;
@@ -207,7 +207,21 @@ LiteralValue evaluateValue(ASTNode* node, const Tuple& tuple, const std::unorder
                 }
             }
             if (col_index != -1) {
-                return tuple[col_index];
+                // 需要将Tuple中的variant转换为LiteralValue
+                const auto& tuple_val = tuple[col_index];
+                return std::visit([](const auto& val) -> LiteralValue {
+                    using T = std::decay_t<decltype(val)>;
+                    if constexpr (std::is_same_v<T, int>) {
+                        return val;
+                    } else if constexpr (std::is_same_v<T, std::string>) {
+                        return val;
+                    } else if constexpr (std::is_same_v<T, double>) {
+                        return static_cast<int>(val);
+                    } else if constexpr (std::is_same_v<T, bool>) {
+                        return val;
+                    }
+                    throw std::runtime_error("Unsupported tuple variant type.");
+                }, tuple_val);
             }
             throw std::runtime_error("Column '" + full_col_name + "' not found.");
         }

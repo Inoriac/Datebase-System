@@ -127,9 +127,13 @@ static bool CompareValues(const Value& lhs, DataType type, CmpOp op,
                           bool is_bool, int int_value, bool bool_value) {
     switch (type) {
         case DataType::Int: {
-            if (!std::holds_alternative<int>(lhs)) return false;
+            if (!std::holds_alternative<int>(lhs)) {
+                std::cout << "CompareValues: lhs is not int, type=" << lhs.index() << std::endl;
+                return false;
+            }
             int lv = std::get<int>(lhs);
             int rv = int_value;
+            std::cout << "CompareValues: comparing int " << lv << " with " << rv << ", op=" << static_cast<int>(op) << std::endl;
             switch (op) {
                 case CmpOp::EQ: return lv == rv;
                 case CmpOp::NE: return lv != rv;
@@ -564,7 +568,12 @@ std::vector<Record> TableManager::SelectRecordsWithCondition(const std::string &
 
     // 解析条件
     std::string col; CmpOp op; std::string lit; bool is_str = false; bool is_b = false; int iv = 0; bool bv = false;
-    if (!ParseCondition(cond, col, op, lit, is_str, is_b, iv, bv)) return out;
+    if (!ParseCondition(cond, col, op, lit, is_str, is_b, iv, bv)) {
+        logger_->Debug("SelectRecordsWithCondition: Failed to parse condition '{}'", cond);
+        return out;
+    }
+    logger_->Debug("SelectRecordsWithCondition: Parsed condition - col='{}', op={}, lit='{}', is_str={}, is_b={}, iv={}, bv={}", 
+                  col, static_cast<int>(op), lit, is_str, is_b, iv, bv);
 
     int col_idx = FindColumnIndexByName(schema, col);
     if (col_idx < 0) return out;
@@ -588,8 +597,11 @@ std::vector<Record> TableManager::SelectRecordsWithCondition(const std::string &
 
             if (static_cast<size_t>(col_idx) >= rec.values_.size()) continue;
             const Value& v = rec.values_[static_cast<size_t>(col_idx)];
-            if (CompareValues(v, col_type, op, lit, is_str, is_b, iv, bv)) {
+            bool matched = CompareValues(v, col_type, op, lit, is_str, is_b, iv, bv);
+            logger_->Debug("SelectRecordsWithCondition: Comparing record value with condition, matched: {}", matched);
+            if (matched) {
                 out.push_back(rec);
+                logger_->Debug("SelectRecordsWithCondition: Added matching record to result");
             }
         }
     }
@@ -645,6 +657,9 @@ int TableManager::UpdateRecordsWithCondition(const std::string &table_name, cons
         col_idx = FindColumnIndexByName(schema, col);
         if (col_idx < 0) return 0;
         col_type = schema.columns_[static_cast<size_t>(col_idx)].type_;
+        logger_->Debug("Parsed condition: col='{}', op={}, lit='{}', is_str={}, is_b={}, iv={}, bv={}", 
+                      col, static_cast<int>(op), lit, is_str, is_b, iv, bv);
+        logger_->Debug("Column index: {}, type: {}", col_idx, static_cast<int>(col_type));
     }
 
     const int record_size = RecordSerializer::CalculateRecordSize(schema);
@@ -722,11 +737,18 @@ int TableManager::UpdateRecordsWithCondition(const std::string &table_name, cons
                 if (static_cast<size_t>(col_idx) < rec.values_.size()) {
                     const Value &v = rec.values_[static_cast<size_t>(col_idx)];
                     matched = CompareValues(v, col_type, op, lit, is_str, is_b, iv, bv);
+                    logger_->Debug("Second pass: Comparing record {} with condition '{}', matched: {}", current_record_id, condition, matched);
                 }
             }
             if (matched) {
                 // 执行更新
-                if (WriteRecordToPage(page_id, offset, new_record, schema)) updated++;
+                logger_->Debug("Second pass: Updating record {} at page {} offset {}", current_record_id, page_id, offset);
+                if (WriteRecordToPage(page_id, offset, new_record, schema)) {
+                    updated++;
+                    logger_->Debug("Second pass: Successfully updated record {}", current_record_id);
+                } else {
+                    logger_->Debug("Second pass: Failed to write record {} to page", current_record_id);
+                }
             }
             current_record_id++;
         }
@@ -881,12 +903,23 @@ int TableManager::FindFreeSlotInPage(int page_id, const TableSchema &schema) {
 
 bool TableManager::WriteRecordToPage(int page_id, int offset, const Record &record, const TableSchema &schema) {
     Page* page = buffer_pool_manager_->FetchPage(page_id);
-    if (page == nullptr) return false;
+    if (page == nullptr) {
+        logger_->Debug("WriteRecordToPage: Failed to fetch page {}", page_id);
+        return false;
+    }
 
+    logger_->Debug("WriteRecordToPage: Writing record with {} values to page {} offset {}", 
+                   record.values_.size(), page_id, offset);
+    
     // 序列化后进行存储
     char* data = page->GetData();
     bool ok = RecordSerializer::SerializeRecord(record, schema, data, offset);
-    if (ok) page->SetDirty(true);
+    if (ok) {
+        page->SetDirty(true);
+        logger_->Debug("WriteRecordToPage: Successfully serialized and wrote record");
+    } else {
+        logger_->Debug("WriteRecordToPage: Failed to serialize record");
+    }
 
     buffer_pool_manager_->UnpinPage(page_id);
     return ok;

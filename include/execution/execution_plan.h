@@ -14,7 +14,7 @@ class TableManager;
 struct TableInfo;
 
 // 代表一行数据，可以是任意类型
-using Tuple = std::vector<std::variant<int, std::string, double, bool>>;
+using Tuple = std::vector<std::variant<int, std::string, bool>>;
 
 // 算子类型
 enum OperatorType
@@ -62,7 +62,7 @@ class InsertOperator : public Operator
 public:
     // 兼容三种构造函数
     // 1. 新版本：使用Tuple和column_names
-    InsertOperator(const std::string &table_name, const std::vector<std::variant<int, std::string, double, bool>>& values, std::vector<std::string> column_names)
+    InsertOperator(const std::string &table_name, const std::vector<std::variant<int, std::string, bool>>& values, std::vector<std::string> column_names)
         : table_name(table_name), column_names(std::move(column_names)), table_manager_(nullptr)
     {
         type = INSERT_OP;
@@ -71,7 +71,7 @@ public:
     }
     
     // 1.1. 新版本：使用Tuple、column_names和TableManager
-    InsertOperator(const std::string &table_name, const std::vector<std::variant<int, std::string, double, bool>>& values, std::vector<std::string> column_names, TableManager* table_manager)
+    InsertOperator(const std::string &table_name, const std::vector<std::variant<int, std::string, bool>>& values, std::vector<std::string> column_names, TableManager* table_manager)
         : table_name(table_name), column_names(std::move(column_names)), table_manager_(table_manager)
     {
         type = INSERT_OP;
@@ -81,7 +81,7 @@ public:
     
     // 2. 旧版本：使用TableManager
     InsertOperator(const std::string &table_name,
-                   const std::vector<std::variant<int, std::string, double, bool>> &values,
+                   const std::vector<std::variant<int, std::string, bool>> &values,
                    TableManager* table_manager = nullptr)
         : table_name(table_name), values(values), table_manager_(table_manager)
     {
@@ -109,7 +109,7 @@ public:
     std::string table_name;
     std::vector<std::string> columns; // 可选列列表
     std::vector<std::string> column_names; // 新版本列名
-    std::vector<std::variant<int, std::string, double, bool>> values;
+    std::vector<std::variant<int, std::string, bool>> values;
     TableManager* table_manager_;
 };
 
@@ -142,11 +142,15 @@ public:
 class DeleteOperator : public Operator {
 public:
     // child_op 提供了需要被删除的行
-    DeleteOperator(std::unique_ptr<Operator>&& child_op) {
+    DeleteOperator(std::unique_ptr<Operator>&& child_op, TableManager* table_manager = nullptr) 
+     : table_manager_(table_manager) {
         type = DELETE_OP;
         child = std::move(child_op);
     }
     std::unique_ptr<Tuple> next() override;
+    
+private:
+    TableManager* table_manager_;
 };
 
 // 连接（Join）算子
