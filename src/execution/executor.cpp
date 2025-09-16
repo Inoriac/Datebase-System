@@ -1,13 +1,17 @@
 #include "executor.h"
 #include "symbol_table.h" // 需要访问 catalog
+#include "log/log_config.h"
+#include "utils.h" // 用于求值
 #include <iostream>
 #include <stdexcept>
+
+// 全局的内存数据存储
+std::unordered_map<std::string, std::vector<Tuple>> in_memory_data;
 
 // 实现每个算子的 next() 方法
 
 // CreateTableOperator (非迭代模型，直接执行)
 std::unique_ptr<Tuple> CreateTableOperator::next() {
-    // 实际的建表逻辑
     TableInfo new_table;
     new_table.name = table_name;
     for (const auto& col : columns) {
@@ -15,57 +19,46 @@ std::unique_ptr<Tuple> CreateTableOperator::next() {
         new_table.column_order.push_back(col.first);
     }
     catalog.addTable(new_table);
-    std::cout << "Table '" << table_name << "' created successfully.\n";
+    // 为新表创建内存数据存储
+    in_memory_data[table_name] = {};
+    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
+    logger->Info("Table '{}' created successfully", table_name);
     return nullptr; // 没有数据行返回
 }
 
 // InsertOperator (非迭代模型，直接执行)
 std::unique_ptr<Tuple> InsertOperator::next() {
-    // 实际的插入逻辑
     if (!catalog.tableExists(table_name)) {
         throw std::runtime_error("Table '" + table_name + "' does not exist.");
     }
-    // TODO: 这里需要一个地方来存储实际的数据，例如一个简单的内存表
-    // catalog.insertData(table_name, values);
-    std::cout << "Values inserted into table '" << table_name << "' successfully.\n";
+    // 将值插入到对应的内存表中
+    in_memory_data[table_name].push_back(values);
+    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
+    logger->Info("Values inserted into table '{}' successfully", table_name);
     return nullptr;
 }
 
 // SeqScanOperator (迭代模型)
 std::unique_ptr<Tuple> SeqScanOperator::next() {
-    // 这是一个简化版本，假设我们有实际数据
-    // TODO: 你需要一个实际的数据存储来代替这个模拟
-    
-    // 模拟数据
-    static const std::vector<Tuple> users_data = {
-        {101, std::string("Alice")},
-        {102, std::string("Bob")},
-        {103, std::string("Charlie")}
-    };
-    
-    // 如果没有更多数据，返回空指针
-    if (current_row_index >= users_data.size()) {
+    if (current_row_index >= in_memory_data[table_name].size()) {
         return nullptr;
     }
-    
     // 返回当前行数据的副本，并移动到下一行
-    auto result_tuple = std::make_unique<Tuple>(users_data[current_row_index]);
+    auto result_tuple = std::make_unique<Tuple>(in_memory_data[table_name][current_row_index]);
     current_row_index++;
     return result_tuple;
 }
 
 // FilterOperator (迭代模型)
 std::unique_ptr<Tuple> FilterOperator::next() {
-    // 从子算子获取数据，直到找到匹配的
     std::unique_ptr<Tuple> current_tuple = nullptr;
     do {
         current_tuple = child->next();
         if (current_tuple == nullptr) {
             return nullptr; // 没有更多数据了
         }
-        // TODO: 这里需要实现 WHERE 子句的求值逻辑
-        // 简化版本：假设条件 id > 102
-        if (std::get<int>((*current_tuple)[0]) > 102) {
+        // 使用通用的求值函数来评估 WHERE 条件
+        if (evaluateExpression(condition_node, *current_tuple, tables)) {
             return current_tuple;
         }
     } while (current_tuple != nullptr);
@@ -75,19 +68,67 @@ std::unique_ptr<Tuple> FilterOperator::next() {
 
 // ProjectOperator (迭代模型)
 std::unique_ptr<Tuple> ProjectOperator::next() {
-    // 从子算子获取一行完整数据
     std::unique_ptr<Tuple> input_tuple = child->next();
     if (input_tuple == nullptr) {
         return nullptr; // 没有更多数据了
     }
     
-    // 根据指定的列（this->columns）创建新的元组
+    const TableInfo& table_info = *tables.at(table_name);
     auto result_tuple = std::make_unique<Tuple>();
-    // 这是一个简化版本，假设我们总是投影 id 和 name
-    result_tuple->push_back((*input_tuple)[0]); // id
-    result_tuple->push_back((*input_tuple)[1]); // name
+    
+    for (const auto& col_name : columns) {
+        // 查找列在原始元组中的索引
+        int index = -1;
+        for (size_t i = 0; i < table_info.column_order.size(); ++i) {
+            if (table_info.column_order[i] == col_name) {
+                index = i;
+                break;
+            }
+        }
+        if (index != -1) {
+            result_tuple->push_back((*input_tuple)[index]);
+        }
+    }
     
     return result_tuple;
+}
+
+// UpdateOperator (非迭代模型)
+std::unique_ptr<Tuple> UpdateOperator::next() {
+    // 获取需要更新的元组
+    std::vector<Tuple> tuples_to_update;
+    std::unique_ptr<Tuple> current_tuple;
+    while ((current_tuple = child->next()) != nullptr) {
+        tuples_to_update.push_back(*current_tuple);
+    }
+    
+    // 更新内存中的数据
+    std::vector<Tuple>& table_data = in_memory_data[table_name];
+    
+    for (const auto& tuple_to_update : tuples_to_update) {
+        for (auto& stored_tuple : table_data) {
+            // 找到需要更新的元组（这里简化为通过主键id查找）
+            if (std::get<int>(stored_tuple[0]) == std::get<int>(tuple_to_update[0])) {
+                // 更新元组中的值
+                for (const auto& update_pair : updates) {
+                    const std::string& col_name = update_pair.first;
+                    ASTNode* value_node = update_pair.second;
+                    
+                    const TableInfo& table_info = catalog.getTable(table_name);
+                    for (size_t i = 0; i < table_info.column_order.size(); ++i) {
+                        if (table_info.column_order[i] == col_name) {
+                            stored_tuple[i] = evaluateLiteral(value_node);
+                            break;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+    }
+    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
+    logger->Info("{} rows updated in table '{}'", tuples_to_update.size(), table_name);
+    return nullptr;
 }
 
 // Executor 类实现
@@ -97,13 +138,13 @@ std::vector<Tuple> Executor::execute() {
         return results;
     }
     
-    // 如果是 CREATE TABLE 或 INSERT，直接调用 next() 一次即可
-    if (plan_root_->type == CREATE_TABLE_OP || plan_root_->type == INSERT_OP) {
+    // 对于 CREATE TABLE, INSERT, UPDATE，直接调用 next() 一次即可
+    if (plan_root_->type == CREATE_TABLE_OP || plan_root_->type == INSERT_OP || plan_root_->type == UPDATE_OP) {
         plan_root_->next();
         return results;
     }
     
-    // 如果是 SELECT 或 DELETE，循环调用 next() 直到没有更多数据
+    // 对于 SELECT, DELETE，循环调用 next() 直到没有更多数据
     while (true) {
         std::unique_ptr<Tuple> tuple = plan_root_->next();
         if (tuple == nullptr) {
@@ -115,16 +156,24 @@ std::vector<Tuple> Executor::execute() {
     return results;
 }
 
-
-
 // 构造函数
 SeqScanOperator::SeqScanOperator(const std::string& table_name)
     : table_name(table_name) {
     type = SEQ_SCAN_OP;
     current_row_index = 0; // 初始化
 }
-ProjectOperator::ProjectOperator(std::unique_ptr<Operator>&& child, const std::vector<std::string>& columns)
-    : columns(columns) { // `columns` 是一个复制，所以 const 引用没问题
+ProjectOperator::ProjectOperator(std::unique_ptr<Operator>&& child, const std::string& table_name, const std::vector<std::string>& columns, const std::unordered_map<std::string, const TableInfo*>& tables)
+    : table_name(table_name), columns(columns), tables(tables) {
     this->child = std::move(child);
     type = PROJECT_OP;
+}
+FilterOperator::FilterOperator(std::unique_ptr<Operator>&& child, ASTNode* condition_node, const std::unordered_map<std::string, const TableInfo*>& tables)
+    : condition_node(condition_node), tables(tables) {
+    this->child = std::move(child);
+    type = FILTER_OP;
+}
+UpdateOperator::UpdateOperator(std::unique_ptr<Operator>&& child, const std::string& table_name, const std::vector<std::pair<std::string, ASTNode*>>& updates)
+    : table_name(table_name), updates(updates) {
+    this->child = std::move(child);
+    type = UPDATE_OP;
 }
