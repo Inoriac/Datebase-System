@@ -48,22 +48,31 @@ void demonstrateAdaptivePrefetch() {
     config.prefetch_aggressiveness = 0.6;
     config_manager.SetGlobalConfig(config);
     
-    // 模拟访问模式
-    std::vector<int> sequential_accesses = {1, 2, 3, 4, 5, 6, 7, 8};
-    std::vector<int> random_accesses = {1, 5, 3, 9, 2, 7, 4, 6};
+    // 模拟顺序访问模式
+    std::cout << "模拟顺序访问模式..." << std::endl;
+    for (int i = 1; i <= 8; ++i) {
+        config_manager.RecordPageAccess("test_table", i);
+    }
     
     // 测试顺序访问模式
     std::cout << "测试顺序访问模式..." << std::endl;
-    bool should_prefetch_seq = config_manager.ShouldPrefetch("test_table", 9, sequential_accesses);
-    size_t prefetch_count_seq = config_manager.GetOptimalPrefetchCount("test_table", sequential_accesses);
+    bool should_prefetch_seq = config_manager.ShouldPrefetch("test_table", 9);
+    size_t prefetch_count_seq = config_manager.GetOptimalPrefetchCount("test_table");
     
     std::cout << "  是否应该预读: " << (should_prefetch_seq ? "是" : "否") << std::endl;
     std::cout << "  建议预读数量: " << prefetch_count_seq << std::endl;
     
+    // 清空历史，模拟随机访问模式
+    config_manager.ClearAccessHistory("test_table");
+    std::vector<int> random_accesses = {1, 5, 3, 9, 2, 7, 4, 6};
+    for (int page_id : random_accesses) {
+        config_manager.RecordPageAccess("test_table", page_id);
+    }
+    
     // 测试随机访问模式
     std::cout << "测试随机访问模式..." << std::endl;
-    bool should_prefetch_rand = config_manager.ShouldPrefetch("test_table", 10, random_accesses);
-    size_t prefetch_count_rand = config_manager.GetOptimalPrefetchCount("test_table", random_accesses);
+    bool should_prefetch_rand = config_manager.ShouldPrefetch("test_table", 10);
+    size_t prefetch_count_rand = config_manager.GetOptimalPrefetchCount("test_table");
     
     std::cout << "  是否应该预读: " << (should_prefetch_rand ? "是" : "否") << std::endl;
     std::cout << "  建议预读数量: " << prefetch_count_rand << std::endl;

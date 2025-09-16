@@ -198,6 +198,10 @@ Page* AsyncBufferPoolManager::DoFetchPage(int page_id) {
         lru_list_.remove(page_id);
         lru_list_.push_front(page_id);
         page_ref_count_[page_id]++;
+        
+        // 记录页面访问历史（用于预读决策）
+        // 注意：这里需要表名，但当前接口没有表名参数
+        // 在实际使用中，需要从调用方传入表名
         return page;
     }
 

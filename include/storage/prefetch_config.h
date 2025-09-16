@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <chrono>
+#include <deque>
 
 // 预读策略类型
 enum class PrefetchStrategy {
@@ -58,11 +59,14 @@ public:
     PrefetchPerformanceStats GetStats(const std::string& table_name = "") const;
     void ResetStats(const std::string& table_name = "");
     
+    // 访问历史管理
+    void RecordPageAccess(const std::string& table_name, int page_id);
+    std::vector<int> GetRecentAccesses(const std::string& table_name, size_t max_count = 10) const;
+    void ClearAccessHistory(const std::string& table_name = "");
+    
     // 自适应预读决策
-    bool ShouldPrefetch(const std::string& table_name, int page_id, 
-                       const std::vector<int>& recent_accesses) const;
-    size_t GetOptimalPrefetchCount(const std::string& table_name, 
-                                  const std::vector<int>& recent_accesses) const;
+    bool ShouldPrefetch(const std::string& table_name, int page_id) const;
+    size_t GetOptimalPrefetchCount(const std::string& table_name) const;
     
 private:
     PrefetchConfigManager() = default;
@@ -73,6 +77,10 @@ private:
     PrefetchConfig global_config_;
     std::unordered_map<std::string, PrefetchConfig> table_configs_;
     std::unordered_map<std::string, PrefetchPerformanceStats> table_stats_;
+    
+    // 访问历史记录
+    std::unordered_map<std::string, std::deque<int>> table_access_history_;
+    mutable std::mutex access_history_mutex_;
     
     // 自适应算法辅助
     double CalculateAccessPatternScore(const std::vector<int>& recent_accesses) const;
