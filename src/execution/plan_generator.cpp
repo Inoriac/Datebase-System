@@ -47,23 +47,36 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
     }
     case INSERT_STMT:
     {
-        // 获取表名
         std::string table_name = std::get<std::string>(node->children[0]->value);
-        // 获取值列表
-        std::vector<std::variant<int, std::string>> values;
-        ASTNode *val_list = node->children[1];
-        for (ASTNode *val_node : val_list->children)
+
+        // 检查是否有显式列名列表
+        std::vector<std::string> column_names;
+        ASTNode *values_list = nullptr;
+
+        // 如果子节点数量超过 2，并且第二个子节点是 COLUMN_LIST
+        if (node->children.size() > 2 && node->children[1]->type == COLUMN_LIST)
         {
-            if (val_node->type == INTEGER_LITERAL_NODE)
+            ASTNode *col_list = node->children[1];
+            for (ASTNode *col_node : col_list->children)
             {
-                values.push_back(std::get<int>(val_node->value));
+                column_names.push_back(std::get<std::string>(col_node->value));
             }
-            else if (val_node->type == STRING_LITERAL_NODE)
-            {
-                values.push_back(std::get<std::string>(val_node->value));
-            }
+            values_list = node->children[2];
         }
-        return std::make_unique<InsertOperator>(table_name, values);
+        else
+        {
+            // 没有列名列表，直接处理值列表
+            values_list = node->children[1];
+        }
+
+        // 获取值列表
+        std::vector<LiteralValue> values;
+        for (ASTNode *val_node : values_list->children)
+        {
+            values.push_back(evaluateLiteral(val_node)); // 使用辅助函数来简化
+        }
+
+        return std::make_unique<InsertOperator>(table_name, std::move(values), std::move(column_names));
     }
     case SELECT_STMT:
     {
@@ -72,18 +85,20 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
         ASTNode *from_node = node->children[1];
 
         std::unique_ptr<Operator> plan_root = nullptr;
+        std::string table_name = std::get<std::string>(from_node->value);
+
+        // 创建一个用于传递给算子的表信息映射
+        std::unordered_map<std::string, const TableInfo *> tables;
+        tables[table_name] = &catalog.getTable(table_name);
 
         // 1. 创建 SeqScanOperator
-        std::string table_name = std::get<std::string>(from_node->value);
-        std::unique_ptr<Operator> scan_op = std::make_unique<SeqScanOperator>(table_name);
-        plan_root = std::move(scan_op);
+        plan_root = std::make_unique<SeqScanOperator>(table_name);
 
         // 2. 如果有 WHERE 子句，创建 FilterOperator
         if (node->children.size() > 2)
         {
             ASTNode *where_node = node->children[2];
-            std::unique_ptr<Operator> filter_op = std::make_unique<FilterOperator>(std::move(plan_root), where_node->children[0]);
-            plan_root = std::move(filter_op);
+            plan_root = std::make_unique<FilterOperator>(std::move(plan_root), where_node->children[0], tables);
         }
 
         // 3. 创建 ProjectOperator
@@ -92,8 +107,7 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
         {
             columns.push_back(std::get<std::string>(col_node->value));
         }
-        std::unique_ptr<Operator> project_op = std::make_unique<ProjectOperator>(std::move(plan_root), columns);
-        plan_root = std::move(project_op);
+        plan_root = std::make_unique<ProjectOperator>(std::move(plan_root), table_name, columns, tables);
 
         return plan_root;
     }
@@ -103,12 +117,15 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
         ASTNode *from_node = node->children[0];
         ASTNode *where_node = node->children[1];
 
-        // 1. 创建 SeqScanOperator
         std::string table_name = std::get<std::string>(from_node->value);
+        std::unordered_map<std::string, const TableInfo *> tables;
+        tables[table_name] = &catalog.getTable(table_name);
+
+        // 1. 创建 SeqScanOperator
         std::unique_ptr<Operator> scan_op = std::make_unique<SeqScanOperator>(table_name);
 
         // 2. 创建 FilterOperator
-        std::unique_ptr<Operator> filter_op = std::make_unique<FilterOperator>(std::move(scan_op), where_node->children[0]);
+        std::unique_ptr<Operator> filter_op = std::make_unique<FilterOperator>(std::move(scan_op), where_node->children[0], tables);
 
         return filter_op; // DELETE 的最终算子也可以是 Filter，由后续执行器处理
     }
@@ -122,13 +139,16 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
         std::string table_name = std::get<std::string>(table_name_node->value);
         std::unique_ptr<Operator> plan = std::make_unique<SeqScanOperator>(table_name);
 
+        std::unordered_map<std::string, const TableInfo *> tables;
+        tables[table_name] = &catalog.getTable(table_name);
+
         // 2. 如果有 WHERE 子句，创建 FilterOperator
         if (node->children.size() > 2)
         {
             ASTNode *where_node = node->children[2];
             if (!where_node->children.empty())
             {
-                plan = std::make_unique<FilterOperator>(std::move(plan), where_node->children[0]);
+                plan = std::make_unique<FilterOperator>(std::move(plan), where_node->children[0], tables);
             }
         }
 
@@ -142,7 +162,7 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
         }
 
         // 4. 创建最终的 UpdateOperator
-        return std::make_unique<UpdateOperator>(std::move(plan), updates);
+        return std::make_unique<UpdateOperator>(std::move(plan), table_name, updates);
     }
     default:
         throw SemanticError(SemanticError::SYNTAX_ERROR, "Unsupported statement type.", node); // 暂无位置信息
@@ -203,6 +223,16 @@ void PlanGenerator::printPlanTree(const Operator *op, int indent)
         logger->Debug("SeqScan (table: {})", scan_op->table_name);
         break;
     }
+    case UPDATE_OP:
+    {
+        const auto *update_op = static_cast<const UpdateOperator *>(op);
+        logger->Debug("Update (table: {})", update_op->table_name);
+        if (update_op->child)
+        {
+            printPlanTree(update_op->child.get(), indent + 1);
+        }
+        break;
+    }
     default:
         logger->Debug("Unsupported Operator");
     }
@@ -248,6 +278,12 @@ std::string PlanGenerator::planToJSON(const Operator *op)
     {
         const auto *scan_op = static_cast<const SeqScanOperator *>(op);
         json += "\"type\": \"SeqScan\", \"table\": \"" + scan_op->table_name + "\"";
+        break;
+    }
+    case UPDATE_OP:
+    {
+        const auto *update_op = static_cast<const UpdateOperator *>(op);
+        json += "\"type\": \"Update\", \"table\": \"" + update_op->table_name + "\", \"child\": " + planToJSON(update_op->child.get());
         break;
     }
     default:

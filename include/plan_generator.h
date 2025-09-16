@@ -4,6 +4,8 @@
 #include "ast.h"
 #include "execution/execution_plan.h"
 #include "semantic_error.h"
+#include "utils.h"
+
 #include <string>
 #include <vector>
 #include <memory>

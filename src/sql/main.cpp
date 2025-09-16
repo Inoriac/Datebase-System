@@ -4,6 +4,7 @@
 #include "plan_generator.h"        // 执行计划生成器
 #include "../../include/execution/executor.h"
 #include "utils.h"
+#include "log/log_config.h"
 
 #include <iostream>
 #include <cstdio>
@@ -23,7 +24,6 @@ ASTNode *createMockInsertWithColumnsAst();
 ASTNode *createMockInsertWithColumnsAst_order();
 
 ASTNode *createMockSelectAst();
-
 ASTNode *createMockFullSelectAst();
 
 ASTNode *createMockDeleteAst();
@@ -46,78 +46,78 @@ void free_ast(ASTNode *node)
 
 int main()
 {
-    try
-    {
-        // FILE *inputFile = fopen("test.sql", "r");
-        // if (!inputFile)
-        // {
-        //     std::cerr << "无法打开输入文件 test.sql" << std::endl;
-        //     return 1;
-        // }
-        // yyin = inputFile;
-        // if (yyparse() != 0)
-        // {
-        //     std::cerr << "解析错误，无法生成 AST。" << std::endl;
-        //     fclose(inputFile);
-        //     return 1;
-        // }
-        // fclose(inputFile);
-        // std::cout << "--- 解析成功，生成 AST。 ---\n";
-        // printAST(ast_root, 0);
+    // try
+    // {
+    //     // FILE *inputFile = fopen("test.sql", "r");
+    //     // if (!inputFile)
+    //     // {
+    //     //     std::cerr << "无法打开输入文件 test.sql" << std::endl;
+    //     //     return 1;
+    //     // }
+    //     // yyin = inputFile;
+    //     // if (yyparse() != 0)
+    //     // {
+    //     //     std::cerr << "解析错误，无法生成 AST。" << std::endl;
+    //     //     fclose(inputFile);
+    //     //     return 1;
+    //     // }
+    //     // fclose(inputFile);
+    //     // std::cout << "--- 解析成功，生成 AST。 ---\n";
+    //     // printAST(ast_root, 0);
 
-        // std::cout << "--- 开始语义分析。 ---\n";
-        // semantic_analysis(ast_root);
-        // std::cout << "语义分析通过。\n";
+    //     // std::cout << "--- 开始语义分析。 ---\n";
+    //     // semantic_analysis(ast_root);
+    //     // std::cout << "语义分析通过。\n";
 
-        // 创建一个根节点，用于包含所有语句
-        ASTNode *root_node = new ASTNode(ROOT_NODE, "");
+    //     // 创建一个根节点，用于包含所有语句
+    //     ASTNode *root_node = new ASTNode(ROOT_NODE, "");
 
-        // 1. 添加 CREATE TABLE 语句
-        ASTNode *createAst = createMockCreateTableAst();
-        root_node->addChild(createAst);
-        ASTNode *createAst_order = createMockCreateTableAst_order();
-        root_node->addChild(createAst_order);
+    //     // 1. 添加 CREATE TABLE 语句
+    //     ASTNode *createAst = createMockCreateTableAst();
+    //     root_node->addChild(createAst);
+    //     ASTNode *createAst_order = createMockCreateTableAst_order();
+    //     root_node->addChild(createAst_order);
 
-        // 2. 添加 INSERT INTO 语句
-        ASTNode *insertAst = createMockInsertAst();
-        root_node->addChild(insertAst);
-        ASTNode *insertAst_order = createMockInsertAst_order();
-        root_node->addChild(insertAst_order);
-        ASTNode *insertAst_colume = createMockInsertWithColumnsAst();
-        root_node->addChild(insertAst_colume);
-        ASTNode *insertAst_colume_order = createMockInsertWithColumnsAst_order();
-        root_node->addChild(insertAst_colume_order);
+    //     // 2. 添加 INSERT INTO 语句
+    //     ASTNode *insertAst = createMockInsertAst();
+    //     root_node->addChild(insertAst);
+    //     ASTNode *insertAst_order = createMockInsertAst_order();
+    //     root_node->addChild(insertAst_order);
+    //     ASTNode *insertAst_colume = createMockInsertWithColumnsAst();
+    //     root_node->addChild(insertAst_colume);
+    //     ASTNode *insertAst_colume_order = createMockInsertWithColumnsAst_order();
+    //     root_node->addChild(insertAst_colume_order);
 
-        // 3. 添加 SELECT 语句
-        ASTNode *selectAst = createMockSelectAst();
-        root_node->addChild(selectAst);
+    //     // 3. 添加 SELECT 语句
+    //     ASTNode *selectAst = createMockSelectAst();
+    //     root_node->addChild(selectAst);
 
-        // 3.5 select扩展测试语句
-        ASTNode *fullselectAst = createMockFullSelectAst();
-        root_node->addChild(fullselectAst);
+    //     // 3.5 select扩展测试语句
+    //     ASTNode *fullselectAst = createMockFullSelectAst();
+    //     root_node->addChild(fullselectAst);
 
-        // 4. 添加 DELETE 语句
-        ASTNode *deleteAst = createMockDeleteAst();
-        root_node->addChild(deleteAst);
+    //     // 4. 添加 DELETE 语句
+    //     ASTNode *deleteAst = createMockDeleteAst();
+    //     root_node->addChild(deleteAst);
 
-        // 5. 添加 UPDATE 语句
-        ASTNode *updateAst = createMockUpdateAst();
-        root_node->addChild(updateAst);
+    //     // 5. 添加 UPDATE 语句
+    //     ASTNode *updateAst = createMockUpdateAst();
+    //     root_node->addChild(updateAst);
 
-        std::cout << "--- 正在对所有语句进行语义分析 ---\n";
-        printAST(root_node, 0);
+    //     std::cout << "--- 正在对所有语句进行语义分析 ---\n";
+    //     printAST(root_node, 0);
 
-        semantic_analysis(root_node);
-        // std::cout << "所有语句语义分析通过。\n";
+    //     semantic_analysis(root_node);
+    //     // std::cout << "所有语句语义分析通过。\n";
 
-        // 在程序结束时清理内存
-        delete root_node;
-    }
-    catch (const std::exception &e)
-    {
-        std::cerr << "语义分析失败: " << e.what() << std::endl;
-    }
-    return 0;
+    //     // 在程序结束时清理内存
+    //     delete root_node;
+    // }
+    // catch (const std::exception &e)
+    // {
+    //     std::cerr << "语义分析失败: " << e.what() << std::endl;
+    // }
+    // return 0;
 
     // PlanGenerator plan_gen;
 
@@ -125,13 +125,13 @@ int main()
     // {
 
     //     ASTNode *root_ast1 = new ASTNode(ROOT_NODE, "");
-    //     // 1. 添加 CREATE TABLE 语句
-    //     ASTNode *createAst = createMockCreateTableAst();
-    //     root_ast1->addChild(createAst);
-    //     // // 2. 添加 INSERT INTO 语句
-    //     // ASTNode *root_ast2 = new ASTNode(ROOT_NODE, "");
+    //     // ASTNode *createAst = createMockCreateTableAst();
+    //     // root_ast1->addChild(createAst);
+
+    //     ASTNode *insertAst = createMockInsertAst();
+    //     root_ast1->addChild(insertAst);
     //     // ASTNode *insertAst = createMockInsertAst();
-    //     // root_ast2->addChild(insertAst);
+    //     // root_ast1->addChild(insertAst);
 
     //     // 1. 生成执行计划
     //     std::unique_ptr<Operator> plan_root = plan_gen.generatePlan(root_ast1);
@@ -164,6 +164,85 @@ int main()
     // // }
 
     // return 0;
+    try
+    {
+        auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
+
+        // 批量执行模拟语句
+        std::vector<ASTNode *> mock_statements;
+        mock_statements.push_back(createMockCreateTableAst());
+        mock_statements.push_back(createMockCreateTableAst_order());
+
+        mock_statements.push_back(createMockInsertAst());
+        mock_statements.push_back(createMockInsertAst_order());
+        mock_statements.push_back(createMockInsertWithColumnsAst());
+        mock_statements.push_back(createMockInsertWithColumnsAst_order());
+
+        // mock_statements.push_back(createMockSelectAst());
+        // mock_statements.push_back(createMockFullSelectAst());
+
+        // mock_statements.push_back(createMockDeleteAst());
+        mock_statements.push_back(createMockUpdateAst());
+
+        for (ASTNode *current_statement_node : mock_statements)
+        {
+            if (!current_statement_node)
+            {
+                continue;
+            }
+
+            // 修复：为每个语句创建一个临时的 ROOT_NODE 父节点
+            ASTNode *temp_root = new ASTNode(ROOT_NODE, "");
+            temp_root->addChild(current_statement_node);
+
+            // 1. 语义分析
+            logger->Info("--- Starting Semantic Analysis ---");
+            // SemanticAnalyzer analyzer(catalog);
+            // analyzer.analyze(temp_root);
+            logger->Info("Semantic analysis successful.");
+
+            // 2. 生成执行计划
+            logger->Info("--- Generating Execution Plan ---");
+            PlanGenerator plan_gen;
+            std::unique_ptr<Operator> plan_root = plan_gen.generatePlan(temp_root);
+            plan_gen.printPlanTree(plan_root.get(), 0);
+            logger->Info("Execution plan generated successfully.");
+
+            // 3. 执行计划
+            logger->Info("--- Executing Plan ---");
+            Executor executor(std::move(plan_root));
+            std::vector<Tuple> results = executor.execute();
+            logger->Info("Plan execution successful.");
+
+            // 4. 打印结果（仅针对 SELECT 语句）
+            if (current_statement_node->type == SELECT_STMT)
+            {
+                logger->Info("--- Query Results ---");
+                for (const auto &tuple : results)
+                {
+                    for (const auto &val : tuple)
+                    {
+                        std::visit([](const auto &arg)
+                                   { std::cout << arg << " "; }, val);
+                    }
+                    std::cout << std::endl;
+                }
+            }
+
+            // 清理内存
+            delete (temp_root); // 只需释放临时的 ROOT_NODE 即可，其子节点会一同被释放
+        }
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "错误: " << e.what() << std::endl;
+        // 如果出错，确保清理 AST
+        if (ast_root)
+        {
+            delete (ast_root);
+        }
+    }
+    return 0;
 }
 ASTNode *createMockCreateTableAst()
 {
@@ -297,11 +376,12 @@ ASTNode *createMockInsertWithColumnsAst()
     insert_stmt->addChild(column_list);
 
     // 向列名列表节点添加子节点
-    ASTNode *name_col = new ASTNode(IDENTIFIER_NODE, "name");
-    column_list->addChild(name_col);
 
     ASTNode *id_col = new ASTNode(IDENTIFIER_NODE, "id");
     column_list->addChild(id_col);
+
+    ASTNode *name_col = new ASTNode(IDENTIFIER_NODE, "name");
+    column_list->addChild(name_col);
 
     ASTNode *age_col = new ASTNode(IDENTIFIER_NODE, "age");
     column_list->addChild(age_col);
@@ -310,13 +390,13 @@ ASTNode *createMockInsertWithColumnsAst()
     ASTNode *values_list = new ASTNode(VALUES_LIST, "");
     insert_stmt->addChild(values_list);
 
-    // 字符串常量值节点
-    ASTNode *string_val = new ASTNode(STRING_LITERAL_NODE, "Alice");
-    values_list->addChild(string_val);
-
     // 整型常量值节点
     ASTNode *int_val = new ASTNode(INTEGER_LITERAL_NODE, 102);
     values_list->addChild(int_val);
+
+    // 字符串常量值节点
+    ASTNode *string_val = new ASTNode(STRING_LITERAL_NODE, "Alice");
+    values_list->addChild(string_val);
 
     ASTNode *int_val_ = new ASTNode(INTEGER_LITERAL_NODE, 25);
     values_list->addChild(int_val_);
@@ -339,7 +419,7 @@ ASTNode *createMockInsertWithColumnsAst_order()
 
     // 向列名列表节点添加子节点
     // ASTNode *order_id_col = new ASTNode(IDENTIFIER_NODE, "id");//todo
-    ASTNode *order_id_col = new ASTNode(IDENTIFIER_NODE, "order_id");//todo
+    ASTNode *order_id_col = new ASTNode(IDENTIFIER_NODE, "order_id"); // todo
     column_list->addChild(order_id_col);
 
     ASTNode *user_id_col = new ASTNode(IDENTIFIER_NODE, "user_id");
@@ -533,7 +613,7 @@ ASTNode *createMockUpdateAst()
     condition_equal_op_node->addChild(id_col_node);
 
     // Value in WHERE: 1
-    ASTNode *id_value_node = new ASTNode(INTEGER_LITERAL_NODE, 1);
+    ASTNode *id_value_node = new ASTNode(INTEGER_LITERAL_NODE, 101);
     condition_equal_op_node->addChild(id_value_node);
 
     return update_stmt;
