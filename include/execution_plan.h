@@ -90,7 +90,7 @@ public:
     }
     std::unique_ptr<Tuple> next() override;
     ASTNode *condition;
-    const std::unordered_map<std::string, const TableInfo *> &tables;
+    const std::unordered_map<std::string, const TableInfo *> tables;
 };
 
 // 投影（Project）算子
@@ -101,7 +101,8 @@ public:
     std::unique_ptr<Tuple> next() override;
     std::string table_name;
     std::vector<std::string> columns;
-    const std::unordered_map<std::string, const TableInfo *> &tables;
+    // ✅ 取消注释，并确保这里是按值存储
+    std::unordered_map<std::string, const TableInfo *> tables; 
 };
 
 // UPDATE 算子

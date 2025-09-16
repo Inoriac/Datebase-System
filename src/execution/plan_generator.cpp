@@ -80,11 +80,8 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
     }
     case SELECT_STMT:
     {
-        // SELECT 语句的执行计划是树形结构
-        ASTNode *select_list_node = node->children[0];
+        // 获取 FROM 子句的表名
         ASTNode *from_node = node->children[1];
-
-        std::unique_ptr<Operator> plan_root = nullptr;
         std::string table_name = std::get<std::string>(from_node->value);
 
         // 创建一个用于传递给算子的表信息映射
@@ -92,24 +89,37 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
         tables[table_name] = &catalog.getTable(table_name);
 
         // 1. 创建 SeqScanOperator
-        plan_root = std::make_unique<SeqScanOperator>(table_name);
+        std::unique_ptr<Operator> child_op = std::make_unique<SeqScanOperator>(table_name);
 
         // 2. 如果有 WHERE 子句，创建 FilterOperator
-        if (node->children.size() > 2)
+        if (node->children.size() > 2 && node->children[2]->type == WHERE_CLAUSE)
         {
             ASTNode *where_node = node->children[2];
-            plan_root = std::make_unique<FilterOperator>(std::move(plan_root), where_node->children[0], tables);
+            child_op = std::make_unique<FilterOperator>(std::move(child_op), where_node->children[0], tables);
         }
 
         // 3. 创建 ProjectOperator
+        ASTNode *select_list_node = node->children[0];
         std::vector<std::string> columns;
-        for (ASTNode *col_node : select_list_node->children)
-        {
-            columns.push_back(std::get<std::string>(col_node->value));
-        }
-        plan_root = std::make_unique<ProjectOperator>(std::move(plan_root), table_name, columns, tables);
 
-        return plan_root;
+        // 检查是否是 SELECT *
+        if (select_list_node->children.size() == 1 && std::get<std::string>(select_list_node->children[0]->value) == "*")
+        {
+            // 从目录中获取所有列
+            const TableInfo &table_info = catalog.getTable(table_name);
+            columns = table_info.column_order;
+        }
+        else
+        {
+            // 否则，获取指定的列名
+            for (ASTNode *col_node : select_list_node->children)
+            {
+                columns.push_back(std::get<std::string>(col_node->value));
+            }
+        }
+
+        // 4. 创建最终的 ProjectOperator
+        return std::make_unique<ProjectOperator>(std::move(child_op), table_name, columns, tables);
     }
     case DELETE_STMT:
     {

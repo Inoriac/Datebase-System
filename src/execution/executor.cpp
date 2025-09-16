@@ -29,32 +29,50 @@ std::unique_ptr<Tuple> CreateTableOperator::next()
 }
 
 // InsertOperator (非迭代模型，直接执行)
-std::unique_ptr<Tuple> InsertOperator::next() {
-    if (!catalog.tableExists(table_name)) {
+std::unique_ptr<Tuple> InsertOperator::next()
+{
+    if (!catalog.tableExists(table_name))
+    {
         throw std::runtime_error("Table '" + table_name + "' does not exist.");
     }
 
-    const TableInfo& table_info = catalog.getTable(table_name);
+    const TableInfo &table_info = catalog.getTable(table_name);
     Tuple final_tuple;
 
-    if (column_names.empty()) {
+    if (column_names.empty())
+    {
         // 没有显式列名，按默认顺序插入
         final_tuple = values;
-    } else {
+    }
+    else
+    {
         // 有显式列名，需要根据表定义重新排序值
         final_tuple.resize(table_info.column_order.size());
         std::unordered_map<std::string, LiteralValue> value_map;
-        for (size_t i = 0; i < column_names.size(); ++i) {
+        for (size_t i = 0; i < column_names.size(); ++i)
+        {
             value_map[column_names[i]] = values[i];
         }
 
-        for (size_t i = 0; i < table_info.column_order.size(); ++i) {
-            const std::string& col_name = table_info.column_order[i];
+        for (size_t i = 0; i < table_info.column_order.size(); ++i)
+        {
+            const std::string &col_name = table_info.column_order[i];
             final_tuple[i] = value_map.at(col_name);
         }
     }
 
     in_memory_data[table_name].push_back(final_tuple);
+
+    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
+
+    // 打印即将插入的元组内容以进行调试
+    logger->Info("打印这个表看看", table_name);
+    for (const auto &val : final_tuple)
+    {
+        std::visit([&](const auto &arg)
+                   { std::cout << typeid(arg).name() << ":" << arg << " "; }, val);
+    }
+    std::cout << std::endl;
     // ... (日志和返回代码)
     return nullptr;
 }
@@ -62,13 +80,27 @@ std::unique_ptr<Tuple> InsertOperator::next() {
 // SeqScanOperator (迭代模型)
 std::unique_ptr<Tuple> SeqScanOperator::next()
 {
+    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
+
     if (current_row_index >= in_memory_data[table_name].size())
     {
         return nullptr;
     }
+
     // 返回当前行数据的副本，并移动到下一行
     auto result_tuple = std::make_unique<Tuple>(in_memory_data[table_name][current_row_index]);
+
+    logger->Info("Scanning tuple at index %zu:", current_row_index);
+    for (const auto &val : *result_tuple)
+    {
+        std::visit([&](const auto &arg)
+                   { std::cout << typeid(arg).name() << ":" << arg << " "; }, val);
+    }
+    std::cout << std::endl;
+    
     current_row_index++;
+    logger->Info("select语句结束!");
+
     return result_tuple;
 }
 
@@ -99,15 +131,15 @@ std::unique_ptr<Tuple> ProjectOperator::next()
     std::unique_ptr<Tuple> input_tuple = child->next();
     if (input_tuple == nullptr)
     {
-        return nullptr; // 没有更多数据了
+        return nullptr;
     }
 
-    const TableInfo &table_info = *tables.at(table_name);
+    // 直接从全局 catalog 获取表信息，而非通过悬空指针
+    const TableInfo &table_info = catalog.getTable(table_name);
     auto result_tuple = std::make_unique<Tuple>();
 
     for (const auto &col_name : columns)
     {
-        // 查找列在原始元组中的索引
         int index = -1;
         for (size_t i = 0; i < table_info.column_order.size(); ++i)
         {
@@ -122,15 +154,15 @@ std::unique_ptr<Tuple> ProjectOperator::next()
             result_tuple->push_back((*input_tuple)[index]);
         }
     }
-
     return result_tuple;
 }
-
 std::unique_ptr<Tuple> UpdateOperator::next()
 {
     // 获取需要更新的元组
     std::vector<Tuple> tuples_to_update;
     std::unique_ptr<Tuple> current_tuple;
+    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
+
     while ((current_tuple = child->next()) != nullptr)
     {
         tuples_to_update.push_back(*current_tuple);
@@ -155,6 +187,7 @@ std::unique_ptr<Tuple> UpdateOperator::next()
     {
         const std::string &col_name = update_pair.first;
         ASTNode *value_node = update_pair.second;
+        logger->Info("update开始");
 
         // 查找列的索引
         int col_index = -1;
@@ -216,8 +249,6 @@ std::unique_ptr<Tuple> UpdateOperator::next()
             }
         }
     }
-
-    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
     logger->Info("{} rows updated in table '{}'", updated_count, table_name);
     return nullptr;
 }
@@ -232,35 +263,35 @@ std::vector<Tuple> Executor::execute()
     auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
 
     // 检查根算子的类型
-    switch (plan_root_->type) {
-        case CREATE_TABLE_OP:
-        case INSERT_OP:
-        // case DELETE_OP:
-        case UPDATE_OP:
-            // 非迭代型操作，只需调用一次 next()
-            logger->Info("你好1");
-            plan_root_->next();
-            break;
-        case PROJECT_OP:
-        case FILTER_OP:
-        case SEQ_SCAN_OP:
+    switch (plan_root_->type)
+    {
+    case CREATE_TABLE_OP:
+    case INSERT_OP:
+    // case DELETE_OP:
+    case UPDATE_OP:
+        // 非迭代型操作，只需调用一次 next()
+        plan_root_->next();
+        break;
+    case PROJECT_OP:
+    case FILTER_OP:
+    case SEQ_SCAN_OP:
         // 在这里添加其他迭代型操作，例如 JOIN_OP
-            // 迭代型操作，循环调用 next() 直到没有更多数据
-            while (true)
+        // 迭代型操作，循环调用 next() 直到没有更多数据
+        while (true)
+        {
+            logger->Info("进入select");
+            std::unique_ptr<Tuple> tuple = plan_root_->next();
+            logger->Info("select执行完毕");
+            if (tuple == nullptr)
             {
-                logger->Info("你好1");
-                std::unique_ptr<Tuple> tuple = plan_root_->next();
-                if (tuple == nullptr)
-                {
-                    break;
-                }
-                logger->Info("你好2");
-                results.push_back(*tuple);
+                break;
             }
-            break;
-        default:
-            logger->Error("Unsupported operator type.");
-            break;
+            results.push_back(*tuple);
+        }
+        break;
+    default:
+        logger->Error("Unsupported operator type.");
+        break;
     }
 
     return results;
@@ -272,8 +303,8 @@ SeqScanOperator::SeqScanOperator(const std::string &table_name)
     type = SEQ_SCAN_OP;
     current_row_index = 0; // 初始化
 }
-ProjectOperator::ProjectOperator(std::unique_ptr<Operator> &&child, const std::string &table_name, const std::vector<std::string> &columns, const std::unordered_map<std::string, const TableInfo *> &tables)
-    : table_name(table_name), columns(columns), tables(tables)
+ProjectOperator::ProjectOperator(std::unique_ptr<Operator> &&child, const std::string &table_name, const std::vector<std::string> &columns,const std::unordered_map<std::string, const TableInfo *> &tables)
+    : table_name(table_name), columns(columns),tables(tables)
 {
     this->child = std::move(child);
     type = PROJECT_OP;
@@ -289,7 +320,8 @@ ProjectOperator::ProjectOperator(std::unique_ptr<Operator> &&child, const std::s
 //     type = UPDATE_OP;
 // }
 
-InsertOperator::InsertOperator(const std::string& table_name, Tuple values, std::vector<std::string> column_names)
-    : table_name(table_name), values(std::move(values)), column_names(std::move(column_names)) {
+InsertOperator::InsertOperator(const std::string &table_name, Tuple values, std::vector<std::string> column_names)
+    : table_name(table_name), values(std::move(values)), column_names(std::move(column_names))
+{
     type = INSERT_OP;
 }
