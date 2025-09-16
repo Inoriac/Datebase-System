@@ -64,7 +64,7 @@ class ASTNode
 public:
     ASTNodeType type;
     // 限定名
-    std::variant<std::string, int, bool> value;
+    std::variant<std::string, int, bool, double> value;
     std::vector<ASTNode *> children;
 
     Location location;
