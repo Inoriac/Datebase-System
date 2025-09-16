@@ -1,25 +1,14 @@
 #include "../../include/execution/executor.h"
-#include "symbol_table.h" // 需要访问 catalog
-#include "log/log_config.h"
 #include "catalog/table_manager.h"
 #include "catalog/table_schema_manager.h"
 #include <iostream>
 #include <stdexcept>
 
-// 从 AST 生成条件字符串（复用main.cpp中的实现）
+// 从 AST 生成条件字符串
 static std::string build_condition_from_where(ASTNode* where) {
-    auto sql_logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
-    sql_logger->Debug("build_condition_from_where called");
-    if (!where) {
-        sql_logger->Debug("where is null");
+    if (!where || where->children.empty()) {
         return "";
     }
-    if (where->children.empty()) {
-        sql_logger->Debug("where has no children");
-        return "";
-    }
-    
-    sql_logger->Debug("where type = {}, where children count = {}", (int)where->type, where->children.size());
     
     // 如果传入的where节点本身就是expression节点（比较操作符）
     ASTNode* expr = where;
@@ -28,13 +17,9 @@ static std::string build_condition_from_where(ASTNode* where) {
     }
     
     if (!expr) {
-        sql_logger->Debug("expr is null");
         return "";
     }
     
-    sql_logger->Debug("expr type = {}, expr children count = {}", (int)expr->type, expr->children.size());
-    
-    // 根据语法规则，expression节点可能是各种比较操作符类型
     // 检查是否是支持的操作符类型
     bool is_supported_operator = (expr->type == BINARY_EXPR || 
                                  expr->type == EQUAL_OPERATOR ||
@@ -44,32 +29,26 @@ static std::string build_condition_from_where(ASTNode* where) {
                                  expr->type == LESS_THAN_OR_EQUAL_OPERATOR);
     
     if (!is_supported_operator) {
-        sql_logger->Debug("expr is not a supported operator, type = {}", (int)expr->type);
         return "";
     }
     
     if (expr->children.size() < 2) {
-        sql_logger->Debug("expr has less than 2 children");
         return "";
     }
     
     std::string lhs, op, rhs;
     
     // children[0]: IDENTIFIER_NODE (列名)
-    sql_logger->Debug("children[0] type = {}", (int)expr->children[0]->type);
     if (expr->children[0]->type == IDENTIFIER_NODE) {
         if (std::holds_alternative<std::string>(expr->children[0]->value))
             lhs = std::get<std::string>(expr->children[0]->value);
     }
-    sql_logger->Debug("lhs = '{}'", lhs);
     
     // 操作符在expr节点本身的value中
     if (std::holds_alternative<std::string>(expr->value))
         op = std::get<std::string>(expr->value);
-    sql_logger->Debug("op = '{}'", op);
     
     // children[1]: INTEGER_LITERAL_NODE 或 STRING_LITERAL_NODE (值)
-    sql_logger->Debug("children[1] type = {}", (int)expr->children[1]->type);
     if (expr->children[1]->type == INTEGER_LITERAL_NODE) {
         if (std::holds_alternative<int>(expr->children[1]->value))
             rhs = std::to_string(std::get<int>(expr->children[1]->value));
@@ -87,16 +66,12 @@ static std::string build_condition_from_where(ASTNode* where) {
         if (std::holds_alternative<std::string>(expr->children[1]->value))
             rhs = std::get<std::string>(expr->children[1]->value);
     }
-    sql_logger->Debug("rhs = '{}'", rhs);
     
     if (lhs.empty() || op.empty() || rhs.empty()) {
-        sql_logger->Debug("one of lhs/op/rhs is empty");
         return "";
     }
     
-    std::string result = lhs + op + rhs;
-    sql_logger->Debug("final condition = '{}'", result);
-    return result;
+    return lhs + op + rhs;
 }
 
 // 实现每个算子的 next() 方法
@@ -118,8 +93,6 @@ std::unique_ptr<Tuple> CreateTableOperator::next() {
         throw std::runtime_error("Failed to create table: " + table_name);
     }
     
-    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
-    logger->Info("Table '{}' created successfully", table_name);
     return nullptr; // 没有数据行返回
 }
 
@@ -142,8 +115,6 @@ std::unique_ptr<Tuple> InsertOperator::next() {
         throw std::runtime_error("Failed to insert into table: " + table_name);
     }
     
-    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
-    logger->Info("Values inserted into table '{}' successfully", table_name);
     return nullptr;
 }
 
@@ -243,77 +214,6 @@ std::unique_ptr<Tuple> FilterOperator::next() {
     return result_tuple;
 }
 
-// 条件求值函数
-bool FilterOperator::evaluateCondition(const Tuple& tuple, ASTNode* condition) {
-    if (!condition || condition->type != BINARY_EXPR) {
-        return true; // 无条件或条件无效，返回true
-    }
-    
-    if (condition->children.size() < 2) {
-        return true;
-    }
-    
-    // 获取左操作数（列名）
-    std::string column_name;
-    if (condition->children[0]->type == IDENTIFIER_NODE &&
-        std::holds_alternative<std::string>(condition->children[0]->value)) {
-        column_name = std::get<std::string>(condition->children[0]->value);
-    }
-    
-    // 获取操作符
-    std::string op;
-    if (std::holds_alternative<std::string>(condition->value)) {
-        op = std::get<std::string>(condition->value);
-    }
-    
-    // 获取右操作数（值）
-    Value right_value;
-    if (condition->children[1]->type == INTEGER_LITERAL_NODE) {
-        std::string str_value = std::get<std::string>(condition->children[1]->value);
-        right_value = std::stoi(str_value);
-    } else if (condition->children[1]->type == STRING_LITERAL_NODE) {
-        right_value = std::get<std::string>(condition->children[1]->value);
-    }
-    
-    // 简化实现：假设列名对应列索引
-    // 在实际实现中，应该根据表结构来确定列索引
-    int column_index = 0; // 默认第一列
-    if (column_name == "id") column_index = 0;
-    else if (column_name == "name") column_index = 1;
-    else if (column_name == "age") column_index = 2;
-    else if (column_name == "email") column_index = 3;
-    
-    if (column_index >= tuple.size()) {
-        return false;
-    }
-    
-    Value left_value = tuple[column_index];
-    
-    // 比较操作
-    if (op == "=") {
-        return left_value == right_value;
-    } else if (op == ">") {
-        if (std::holds_alternative<int>(left_value) && std::holds_alternative<int>(right_value)) {
-            return std::get<int>(left_value) > std::get<int>(right_value);
-        }
-    } else if (op == "<") {
-        if (std::holds_alternative<int>(left_value) && std::holds_alternative<int>(right_value)) {
-            return std::get<int>(left_value) < std::get<int>(right_value);
-        }
-    } else if (op == ">=") {
-        if (std::holds_alternative<int>(left_value) && std::holds_alternative<int>(right_value)) {
-            return std::get<int>(left_value) >= std::get<int>(right_value);
-        }
-    } else if (op == "<=") {
-        if (std::holds_alternative<int>(left_value) && std::holds_alternative<int>(right_value)) {
-            return std::get<int>(left_value) <= std::get<int>(right_value);
-        }
-    } else if (op == "!=") {
-        return left_value != right_value;
-    }
-    
-    return false;
-}
 
 // ProjectOperator (迭代模型) - 简化实现，直接返回子算子的结果
 std::unique_ptr<Tuple> ProjectOperator::next() {

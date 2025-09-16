@@ -1,6 +1,4 @@
 #include "plan_generator.h"
-#include "symbol_table.h"
-#include "log/log_config.h"
 #include "catalog/table_manager.h"
 #include <iostream>
 
@@ -158,19 +156,18 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode* node) {
 void PlanGenerator::printPlanTree(const Operator* op, int indent) {
     if (!op) return;
     
-    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
     std::string indent_str(indent * 2, ' ');
-    logger->Debug("{} - ", indent_str);
+    std::cout << indent_str;
     
     switch (op->type) {
         case CREATE_TABLE_OP: {
             const auto* create_op = static_cast<const CreateTableOperator*>(op);
-            logger->Debug("CreateTable (name: {})", create_op->table_name);
+            std::cout << "CreateTable (name: " << create_op->table_name << ")" << std::endl;
             break;
         }
         case INSERT_OP: {
             const auto* insert_op = static_cast<const InsertOperator*>(op);
-            logger->Debug("Insert (table: {})", insert_op->table_name);
+            std::cout << "Insert (table: " << insert_op->table_name << ")" << std::endl;
             break;
         }
         case PROJECT_OP: {
@@ -179,14 +176,14 @@ void PlanGenerator::printPlanTree(const Operator* op, int indent) {
             for (const auto& col : proj_op->columns) {
                 columns_str += col + " ";
             }
-            logger->Debug("Project (columns: {})", columns_str);
+            std::cout << "Project (columns: " << columns_str << ")" << std::endl;
             if (proj_op->child) {
                 printPlanTree(proj_op->child.get(), indent + 1);
             }
             break;
         }
         case FILTER_OP: {
-            logger->Debug("Filter (condition: ...)");
+            std::cout << "Filter (condition: ...)" << std::endl;
             if (op->child) {
                 printPlanTree(op->child.get(), indent + 1);
             }
@@ -194,11 +191,11 @@ void PlanGenerator::printPlanTree(const Operator* op, int indent) {
         }
         case SEQ_SCAN_OP: {
             const auto* scan_op = static_cast<const SeqScanOperator*>(op);
-            logger->Debug("SeqScan (table: {})", scan_op->table_name);
+            std::cout << "SeqScan (table: " << scan_op->table_name << ")" << std::endl;
             break;
         }
         default:
-            logger->Debug("Unsupported Operator");
+            std::cout << "Unsupported Operator" << std::endl;
     }
 }
 
