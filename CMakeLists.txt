@@ -65,7 +65,7 @@ add_executable(Database_System
         src/sql/sql_parser.tab.cpp
         src/sql/sql_lexer.yy.cpp
 )
-target_link_libraries(Database_System PRIVATE storage catalog log)
+target_link_libraries(Database_System PRIVATE storage catalog log execution)
 target_include_directories(Database_System PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/sql)
 
 # ====================

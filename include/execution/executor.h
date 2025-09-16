@@ -2,7 +2,7 @@
 #define EXECUTOR_H
 
 #include "execution_plan.h"
-#include "log/log_config.h"
+#include "../log/log_config.h"
 #include <memory>
 
 class Executor {

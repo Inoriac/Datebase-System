@@ -1,6 +1,7 @@
 #include "plan_generator.h"
 #include "symbol_table.h"
 #include "log/log_config.h"
+#include "catalog/table_manager.h"
 #include <iostream>
 
 
@@ -37,22 +38,24 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode* node) {
                 std::string col_type = std::get<std::string>(col_node->children[0]->value);
                 columns.push_back({col_name, col_type});
             }
-            return std::make_unique<CreateTableOperator>(table_name, columns);
+            return std::make_unique<CreateTableOperator>(table_name, columns, table_manager_);
         }
         case INSERT_STMT: {
             // 获取表名
             std::string table_name = std::get<std::string>(node->children[0]->value);
             // 获取值列表
-            std::vector<std::variant<int, std::string>> values;
+            std::vector<std::variant<int, std::string, bool>> values;
             ASTNode* val_list = node->children[1];
             for (ASTNode* val_node : val_list->children) {
                 if (val_node->type == INTEGER_LITERAL_NODE) {
                     values.push_back(std::get<int>(val_node->value));
                 } else if (val_node->type == STRING_LITERAL_NODE) {
                     values.push_back(std::get<std::string>(val_node->value));
+                } else if (std::holds_alternative<bool>(val_node->value)) {
+                    values.push_back(std::get<bool>(val_node->value));
                 }
             }
-            return std::make_unique<InsertOperator>(table_name, values);
+            return std::make_unique<InsertOperator>(table_name, values, table_manager_);
         }
         case SELECT_STMT: {
             // SELECT 语句的执行计划是树形结构
@@ -63,7 +66,7 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode* node) {
             
             // 1. 创建 SeqScanOperator
             std::string table_name = std::get<std::string>(from_node->value);
-            std::unique_ptr<Operator> scan_op = std::make_unique<SeqScanOperator>(table_name);
+            std::unique_ptr<Operator> scan_op = std::make_unique<SeqScanOperator>(table_name, table_manager_);
             plan_root = std::move(scan_op);
             
             // 2. 如果有 WHERE 子句，创建 FilterOperator
@@ -90,7 +93,7 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode* node) {
 
             // 1. 创建 SeqScanOperator
             std::string table_name = std::get<std::string>(from_node->value);
-            std::unique_ptr<Operator> scan_op = std::make_unique<SeqScanOperator>(table_name);
+            std::unique_ptr<Operator> scan_op = std::make_unique<SeqScanOperator>(table_name, table_manager_);
             
             // 2. 创建 FilterOperator
             std::unique_ptr<Operator> filter_op = std::make_unique<FilterOperator>(std::move(scan_op), where_node->children[0]);

@@ -1,6 +1,8 @@
-#include "executor.h"
+#include "../../include/execution/executor.h"
 #include "symbol_table.h" // 需要访问 catalog
 #include "log/log_config.h"
+#include "catalog/table_manager.h"
+#include "catalog/table_schema_manager.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -8,14 +10,21 @@
 
 // CreateTableOperator (非迭代模型，直接执行)
 std::unique_ptr<Tuple> CreateTableOperator::next() {
-    // 实际的建表逻辑
-    TableInfo new_table;
-    new_table.name = table_name;
+    // 使用实际的TableManager而不是模拟的catalog
+    TableSchema schema(table_name);
     for (const auto& col : columns) {
-        new_table.columns[col.first] = {col.first, col.second};
-        new_table.column_order.push_back(col.first);
+        DataType dt = (col.second == "INT" || col.second == "INTEGER") ? DataType::Int : DataType::Varchar;
+        int len = (dt == DataType::Varchar) ? 255 : 4;
+        schema.AddColumn(Column(col.first, dt, len, true));
     }
-    catalog.addTable(new_table);
+    schema.primary_key_index_ = 0;
+    
+    // 调用实际的TableManager
+    bool success = table_manager_->CreateTable(schema);
+    if (!success) {
+        throw std::runtime_error("Failed to create table: " + table_name);
+    }
+    
     auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
     logger->Info("Table '{}' created successfully", table_name);
     return nullptr; // 没有数据行返回
@@ -23,12 +32,23 @@ std::unique_ptr<Tuple> CreateTableOperator::next() {
 
 // InsertOperator (非迭代模型，直接执行)
 std::unique_ptr<Tuple> InsertOperator::next() {
-    // 实际的插入逻辑
-    if (!catalog.tableExists(table_name)) {
+    // 检查表是否存在
+    if (!table_manager_->TableExists(table_name)) {
         throw std::runtime_error("Table '" + table_name + "' does not exist.");
     }
-    // TODO: 这里需要一个地方来存储实际的数据，例如一个简单的内存表
-    // catalog.insertData(table_name, values);
+    
+    // 构建Record
+    Record rec;
+    for (const auto& value : values) {
+        rec.AddValue(value);
+    }
+    
+    // 调用实际的TableManager
+    bool success = table_manager_->InsertRecord(table_name, rec);
+    if (!success) {
+        throw std::runtime_error("Failed to insert into table: " + table_name);
+    }
+    
     auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
     logger->Info("Values inserted into table '{}' successfully", table_name);
     return nullptr;
@@ -36,23 +56,29 @@ std::unique_ptr<Tuple> InsertOperator::next() {
 
 // SeqScanOperator (迭代模型)
 std::unique_ptr<Tuple> SeqScanOperator::next() {
-    // 这是一个简化版本，假设我们有实际数据
-    // TODO: 你需要一个实际的数据存储来代替这个模拟
-    
-    // 模拟数据
-    static const std::vector<Tuple> users_data = {
-        {101, std::string("Alice")},
-        {102, std::string("Bob")},
-        {103, std::string("Charlie")}
-    };
+    // 使用实际的TableManager进行数据扫描
+    if (current_row_index == 0) {
+        // 首次调用，获取所有记录
+        std::vector<Record> records = table_manager_->SelectRecords(table_name);
+        all_records_.clear();
+        
+        // 将Record转换为Tuple
+        for (const auto& record : records) {
+            Tuple tuple;
+            for (const auto& value : record.values_) {
+                tuple.push_back(value);
+            }
+            all_records_.push_back(tuple);
+        }
+    }
     
     // 如果没有更多数据，返回空指针
-    if (current_row_index >= users_data.size()) {
+    if (current_row_index >= all_records_.size()) {
         return nullptr;
     }
     
     // 返回当前行数据的副本，并移动到下一行
-    auto result_tuple = std::make_unique<Tuple>(users_data[current_row_index]);
+    auto result_tuple = std::make_unique<Tuple>(all_records_[current_row_index]);
     current_row_index++;
     return result_tuple;
 }
@@ -121,8 +147,8 @@ std::vector<Tuple> Executor::execute() {
 
 
 // 构造函数
-SeqScanOperator::SeqScanOperator(const std::string& table_name)
-    : table_name(table_name) {
+SeqScanOperator::SeqScanOperator(const std::string& table_name, TableManager* table_manager)
+    : table_name(table_name), table_manager_(table_manager) {
     type = SEQ_SCAN_OP;
     current_row_index = 0; // 初始化
 }

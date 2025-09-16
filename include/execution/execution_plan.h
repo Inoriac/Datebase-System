@@ -2,14 +2,17 @@
 #ifndef EXECUTION_PLAN_H
 #define EXECUTION_PLAN_H
 
-#include "ast.h"
+#include "../ast.h"
 #include <vector>
 #include <string>
 #include <variant>
 #include <memory>
 
+// 前向声明
+class TableManager;
+
 // 代表一行数据，可以是任意类型
-using Tuple = std::vector<std::variant<int, std::string>>;
+using Tuple = std::vector<std::variant<int, std::string, bool>>;
 
 // 算子类型
 enum OperatorType
@@ -37,40 +40,44 @@ public:
 class CreateTableOperator : public Operator
 {
 public:
-    CreateTableOperator(const std::string &table_name, const std::vector<std::pair<std::string, std::string>> &columns)
-        : table_name(table_name), columns(columns)
+    CreateTableOperator(const std::string &table_name, const std::vector<std::pair<std::string, std::string>> &columns, TableManager* table_manager)
+        : table_name(table_name), columns(columns), table_manager_(table_manager)
     {
         type = CREATE_TABLE_OP;
     }
     std::unique_ptr<Tuple> next() override;
     std::string table_name;
     std::vector<std::pair<std::string, std::string>> columns;
+    TableManager* table_manager_;
 };
 
 // INSERT 算子
 class InsertOperator : public Operator
 {
 public:
-    InsertOperator(const std::string &table_name, const std::vector<std::variant<int, std::string>> &values)
-        : table_name(table_name), values(values)
+    InsertOperator(const std::string &table_name, const std::vector<std::variant<int, std::string, bool>> &values, TableManager* table_manager)
+        : table_name(table_name), values(values), table_manager_(table_manager)
     {
         type = INSERT_OP;
     }
     std::unique_ptr<Tuple> next() override;
     std::string table_name;
-    std::vector<std::variant<int, std::string>> values;
+    std::vector<std::variant<int, std::string, bool>> values;
+    TableManager* table_manager_;
 };
 
 // 全表扫描（Sequential Scan）算子
 class SeqScanOperator : public Operator
 {
 public:
-    SeqScanOperator(const std::string &table_name);
+    SeqScanOperator(const std::string &table_name, TableManager* table_manager);
     std::unique_ptr<Tuple> next() override;
     std::string table_name;
-    size_t current_row_index = 0; // 模拟表数据迭代
+    size_t current_row_index = 0; // 表数据迭代索引
+    std::vector<std::vector<std::variant<int, std::string, bool>>> all_records_; // 缓存所有记录
 
 private:
+    TableManager* table_manager_;
 };
 
 // 过滤（Filter）算子

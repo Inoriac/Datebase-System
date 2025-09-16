@@ -6,6 +6,8 @@
 #include "catalog/table_manager.h"
 #include "ast.h"
 #include "log/log_config.h"
+#include "plan_generator.h"
+#include "../include/execution/executor.h"
 
 // Flex/Bison 解析接口
 extern int yyparse();
@@ -95,176 +97,220 @@ static std::string build_condition_from_where(ASTNode* where) {
     return result;
 }
 
-// 执行解析得到的 AST：按顺序对接 TableManager
-static void execute_ast(ASTNode* root, TableManager& tm) {
+// 使用执行器执行AST的新函数
+static void execute_ast_with_executor(ASTNode* root, TableManager& tm) {
     if (!root) return;
     
     auto sql_logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
+    
     for (ASTNode* stmt : root->children) {
         try {
-        switch (stmt->type) {
-            case CREATE_TABLE_STMT: {
-                // CREATE TABLE table_name (col defs)
-                std::string table;
-                if (std::holds_alternative<std::string>(stmt->children[0]->value))
-                    table = std::get<std::string>(stmt->children[0]->value);
-                ASTNode* col_list = stmt->children[1];
-                TableSchema schema(table);
-                for (ASTNode* col_node : col_list->children) {
-                    std::string col_name;
-                    if (std::holds_alternative<std::string>(col_node->value))
-                        col_name = std::get<std::string>(col_node->value);
-                    std::string t;
-                    if (std::holds_alternative<std::string>(col_node->children[0]->value))
-                        t = std::get<std::string>(col_node->children[0]->value);
-                    // 映射字符串到内部类型
-                    DataType dt = (t == "INT" || t == "INTEGER") ? DataType::Int : DataType::Varchar;
-                    int len = (dt == DataType::Varchar ? 255 : 4);
-                    schema.AddColumn(Column(col_name, dt, len, true));
-                }
-                schema.primary_key_index_ = 0;
-                if (tm.TableExists(table)) {
-                    std::cout << "ERR: table already exists: " << table << "\n";
-                    break;
-                }
-                bool ok = tm.CreateTable(schema);
-                if (!ok) std::cout << "ERR: create table failed: " << table << "\n"; else std::cout << "OK\n";
-                break;
-            }
-            case INSERT_STMT: {
-                std::string table;
-                if (std::holds_alternative<std::string>(stmt->children[0]->value))
-                    table = std::get<std::string>(stmt->children[0]->value);
-                ASTNode* values = stmt->children.back();
-                Record rec;
-                for (ASTNode* v : values->children) {
-                    if (v->type == INTEGER_LITERAL_NODE) {
-                        if (std::holds_alternative<int>(v->value)) rec.AddValue(std::get<int>(v->value));
-                        else if (std::holds_alternative<std::string>(v->value)) {
-                            try { rec.AddValue(std::stoi(std::get<std::string>(v->value))); } catch (...) { rec.AddValue(0); }
+            PlanGenerator plan_generator(&tm);
+            std::unique_ptr<Operator> plan = plan_generator.visit(stmt);
+            
+            if (plan) {
+                Executor executor(std::move(plan));
+                std::vector<Tuple> results = executor.execute();
+                
+                // 处理结果
+                if (stmt->type == SELECT_STMT) {
+                    std::cout << "rows=" << results.size() << "\n";
+                    for (const auto& tuple : results) {
+                        std::cout << "{";
+                        for (size_t i = 0; i < tuple.size(); ++i) {
+                            if (std::holds_alternative<int>(tuple[i])) {
+                                std::cout << std::get<int>(tuple[i]);
+                            } else if (std::holds_alternative<std::string>(tuple[i])) {
+                                std::cout << std::get<std::string>(tuple[i]);
+                            } else if (std::holds_alternative<bool>(tuple[i])) {
+                                std::cout << (std::get<bool>(tuple[i]) ? "true" : "false");
+                            }
+                            if (i + 1 < tuple.size()) std::cout << ", ";
                         }
-                    } else if (v->type == STRING_LITERAL_NODE) {
-                        std::string s;
-                        if (std::holds_alternative<std::string>(v->value)) s = std::get<std::string>(v->value);
-                        if (!s.empty() && (s.front() == '\'' || s.front() == '"') && s.back() == s.front()) {
-                            if (s.size() >= 2) s = s.substr(1, s.size()-2);
-                        }
-                        rec.AddValue(s);
-                    } else if (v->type == IDENTIFIER_NODE) {
-                        // 容错：把未加引号的标识符当作字符串值
-                        if (std::holds_alternative<std::string>(v->value))
-                            rec.AddValue(std::get<std::string>(v->value));
-                    }
-                }
-                if (!tm.TableExists(table)) {
-                    std::cout << "ERR: table not found: " << table << "\n"; break;
-                }
-                if (TableSchema* s = tm.GetTableSchema(table)) {
-                    if (rec.values_.size() != s->columns_.size()) {
-                        std::cout << "ERR: column count mismatch: expected " << s->columns_.size()
-                                  << ", got " << rec.values_.size() << "\n"; break;
-                    }
-                }
-                bool ok = tm.InsertRecord(table, rec);
-                if (!ok) {
-                    // 检查是否是主键重复错误
-                    TableSchema* schema = tm.GetTableSchema(table);
-                    if (schema && schema->primary_key_index_ >= 0) {
-                        std::cout << "ERR: Primary key constraint violation in table '" << table << "'" << std::endl;
-                    } else {
-                        std::cout << "ERR: insert failed into " << table << "\n";
+                        std::cout << "}\n";
                     }
                 } else {
                     std::cout << "OK\n";
                 }
-                break;
+            } else {
+                std::cout << "ERR: failed to generate execution plan\n";
             }
-            case SELECT_STMT: {
-                // SELECT ... FROM table [WHERE ...]
-                ASTNode* select_list = stmt->children[0];
-                ASTNode* from = stmt->children[1];
-                std::string table;
-                if (std::holds_alternative<std::string>(from->value)) table = std::get<std::string>(from->value);
-                
-                // 解析SELECT列表
-                std::vector<std::string> columns;
-                if (select_list->children.size() == 1 && 
-                    select_list->children[0]->type == IDENTIFIER_NODE &&
-                    std::holds_alternative<std::string>(select_list->children[0]->value) &&
-                    std::get<std::string>(select_list->children[0]->value) == "*") {
-                    // SELECT * - 获取所有列
-                    // 这里我们需要获取表结构来知道所有列名
-                    TableSchema* schema = tm.GetTableSchema(table);
-                    if (schema) {
-                        for (const auto& col : schema->columns_) {
-                            columns.push_back(col.column_name_);
-                        }
-                    }
-                } else {
-                    // SELECT column1, column2, ... - 获取指定列
-                    for (ASTNode* col_node : select_list->children) {
-                        if (col_node->type == IDENTIFIER_NODE && 
-                            std::holds_alternative<std::string>(col_node->value)) {
-                            columns.push_back(std::get<std::string>(col_node->value));
-                        }
-                    }
-                }
-                
-                std::string cond;
-                if (stmt->children.size() > 2) cond = build_condition_from_where(stmt->children[2]);
-                sql_logger->Debug("condition = '{}'", cond);
-                std::string columns_str = "[";
-                for (size_t i = 0; i < columns.size(); ++i) {
-                    columns_str += "'" + columns[i] + "'";
-                    if (i + 1 < columns.size()) columns_str += ", ";
-                }
-                columns_str += "]";
-                sql_logger->Debug("columns = {}", columns_str);
-                
-                if (!tm.TableExists(table)) { std::cout << "ERR: table not found: " << table << "\n"; break; }
-                
-                // 使用投影查询
-                std::vector<Record> rows;
-                if (cond.empty()) {
-                    rows = tm.SelectColumns(table, columns);
-                } else {
-                    rows = tm.SelectColumnsWithCondition(table, columns, cond);
-                }
-                
-                std::cout << "rows=" << rows.size() << "\n";
-                for (const auto& r : rows) {
-                    std::cout << "{";
-                    for (size_t i = 0; i < r.values_.size(); ++i) {
-                        if (std::holds_alternative<int>(r.values_[i])) std::cout << std::get<int>(r.values_[i]);
-                        else if (std::holds_alternative<std::string>(r.values_[i])) std::cout << std::get<std::string>(r.values_[i]);
-                        else if (std::holds_alternative<bool>(r.values_[i])) std::cout << (std::get<bool>(r.values_[i]) ? "true" : "false");
-                        if (i + 1 < r.values_.size()) std::cout << ", ";
-                    }
-                    std::cout << "}\n";
-                }
-                break;
-            }
-            case DELETE_STMT: {
-                ASTNode* from = stmt->children[0];
-                std::string table;
-                if (std::holds_alternative<std::string>(from->value)) table = std::get<std::string>(from->value);
-                std::string cond;
-                if (stmt->children.size() > 1) cond = build_condition_from_where(stmt->children[1]);
-                if (!tm.TableExists(table)) { std::cout << "ERR: table not found: " << table << "\n"; break; }
-                int n = tm.DeleteRecordsWithCondition(table, cond);
-                std::cout << "deleted=" << n << "\n";
-                break;
-            }
-            default:
-                std::cout << "WARN: unsupported statement type: " << (int)stmt->type << "\n";
-        }
-        } catch (const std::bad_variant_access&) {
-            std::cout << "ERR: bad value type in statement (variant access)\n";
         } catch (const std::exception& e) {
             std::cout << "ERR: " << e.what() << "\n";
         }
     }
 }
+
+// 执行解析得到的 AST：按顺序对接 TableManager (保留原函数作为备用)
+// static void execute_ast(ASTNode* root, TableManager& tm) {
+//     if (!root) return;
+//
+//     auto sql_logger = DatabaseSystem::Log::LogConfig::GetSQLLogger();
+//     for (ASTNode* stmt : root->children) {
+//         try {
+//         switch (stmt->type) {
+//             case CREATE_TABLE_STMT: {
+//                 // CREATE TABLE table_name (col defs)
+//                 std::string table;
+//                 if (std::holds_alternative<std::string>(stmt->children[0]->value))
+//                     table = std::get<std::string>(stmt->children[0]->value);
+//                 ASTNode* col_list = stmt->children[1];
+//                 TableSchema schema(table);
+//                 for (ASTNode* col_node : col_list->children) {
+//                     std::string col_name;
+//                     if (std::holds_alternative<std::string>(col_node->value))
+//                         col_name = std::get<std::string>(col_node->value);
+//                     std::string t;
+//                     if (std::holds_alternative<std::string>(col_node->children[0]->value))
+//                         t = std::get<std::string>(col_node->children[0]->value);
+//                     // 映射字符串到内部类型
+//                     DataType dt = (t == "INT" || t == "INTEGER") ? DataType::Int : DataType::Varchar;
+//                     int len = (dt == DataType::Varchar ? 255 : 4);
+//                     schema.AddColumn(Column(col_name, dt, len, true));
+//                 }
+//                 schema.primary_key_index_ = 0;
+//                 if (tm.TableExists(table)) {
+//                     std::cout << "ERR: table already exists: " << table << "\n";
+//                     break;
+//                 }
+//                 bool ok = tm.CreateTable(schema);
+//                 if (!ok) std::cout << "ERR: create table failed: " << table << "\n"; else std::cout << "OK\n";
+//                 break;
+//             }
+//             case INSERT_STMT: {
+//                 std::string table;
+//                 if (std::holds_alternative<std::string>(stmt->children[0]->value))
+//                     table = std::get<std::string>(stmt->children[0]->value);
+//                 ASTNode* values = stmt->children.back();
+//                 Record rec;
+//                 for (ASTNode* v : values->children) {
+//                     if (v->type == INTEGER_LITERAL_NODE) {
+//                         if (std::holds_alternative<int>(v->value)) rec.AddValue(std::get<int>(v->value));
+//                         else if (std::holds_alternative<std::string>(v->value)) {
+//                             try { rec.AddValue(std::stoi(std::get<std::string>(v->value))); } catch (...) { rec.AddValue(0); }
+//                         }
+//                     } else if (v->type == STRING_LITERAL_NODE) {
+//                         std::string s;
+//                         if (std::holds_alternative<std::string>(v->value)) s = std::get<std::string>(v->value);
+//                         if (!s.empty() && (s.front() == '\'' || s.front() == '"') && s.back() == s.front()) {
+//                             if (s.size() >= 2) s = s.substr(1, s.size()-2);
+//                         }
+//                         rec.AddValue(s);
+//                     } else if (v->type == IDENTIFIER_NODE) {
+//                         // 容错：把未加引号的标识符当作字符串值
+//                         if (std::holds_alternative<std::string>(v->value))
+//                             rec.AddValue(std::get<std::string>(v->value));
+//                     }
+//                 }
+//                 if (!tm.TableExists(table)) {
+//                     std::cout << "ERR: table not found: " << table << "\n"; break;
+//                 }
+//                 if (TableSchema* s = tm.GetTableSchema(table)) {
+//                     if (rec.values_.size() != s->columns_.size()) {
+//                         std::cout << "ERR: column count mismatch: expected " << s->columns_.size()
+//                                   << ", got " << rec.values_.size() << "\n"; break;
+//                     }
+//                 }
+//                 bool ok = tm.InsertRecord(table, rec);
+//                 if (!ok) {
+//                     // 检查是否是主键重复错误
+//                     TableSchema* schema = tm.GetTableSchema(table);
+//                     if (schema && schema->primary_key_index_ >= 0) {
+//                         std::cout << "ERR: Primary key constraint violation in table '" << table << "'" << std::endl;
+//                     } else {
+//                         std::cout << "ERR: insert failed into " << table << "\n";
+//                     }
+//                 } else {
+//                     std::cout << "OK\n";
+//                 }
+//                 break;
+//             }
+//             case SELECT_STMT: {
+//                 // SELECT ... FROM table [WHERE ...]
+//                 ASTNode* select_list = stmt->children[0];
+//                 ASTNode* from = stmt->children[1];
+//                 std::string table;
+//                 if (std::holds_alternative<std::string>(from->value)) table = std::get<std::string>(from->value);
+//
+//                 // 解析SELECT列表
+//                 std::vector<std::string> columns;
+//                 if (select_list->children.size() == 1 &&
+//                     select_list->children[0]->type == IDENTIFIER_NODE &&
+//                     std::holds_alternative<std::string>(select_list->children[0]->value) &&
+//                     std::get<std::string>(select_list->children[0]->value) == "*") {
+//                     // SELECT * - 获取所有列
+//                     // 这里我们需要获取表结构来知道所有列名
+//                     TableSchema* schema = tm.GetTableSchema(table);
+//                     if (schema) {
+//                         for (const auto& col : schema->columns_) {
+//                             columns.push_back(col.column_name_);
+//                         }
+//                     }
+//                 } else {
+//                     // SELECT column1, column2, ... - 获取指定列
+//                     for (ASTNode* col_node : select_list->children) {
+//                         if (col_node->type == IDENTIFIER_NODE &&
+//                             std::holds_alternative<std::string>(col_node->value)) {
+//                             columns.push_back(std::get<std::string>(col_node->value));
+//                         }
+//                     }
+//                 }
+//
+//                 std::string cond;
+//                 if (stmt->children.size() > 2) cond = build_condition_from_where(stmt->children[2]);
+//                 sql_logger->Debug("condition = '{}'", cond);
+//                 std::string columns_str = "[";
+//                 for (size_t i = 0; i < columns.size(); ++i) {
+//                     columns_str += "'" + columns[i] + "'";
+//                     if (i + 1 < columns.size()) columns_str += ", ";
+//                 }
+//                 columns_str += "]";
+//                 sql_logger->Debug("columns = {}", columns_str);
+//
+//                 if (!tm.TableExists(table)) { std::cout << "ERR: table not found: " << table << "\n"; break; }
+//
+//                 // 使用投影查询
+//                 std::vector<Record> rows;
+//                 if (cond.empty()) {
+//                     rows = tm.SelectColumns(table, columns);
+//                 } else {
+//                     rows = tm.SelectColumnsWithCondition(table, columns, cond);
+//                 }
+//
+//                 std::cout << "rows=" << rows.size() << "\n";
+//                 for (const auto& r : rows) {
+//                     std::cout << "{";
+//                     for (size_t i = 0; i < r.values_.size(); ++i) {
+//                         if (std::holds_alternative<int>(r.values_[i])) std::cout << std::get<int>(r.values_[i]);
+//                         else if (std::holds_alternative<std::string>(r.values_[i])) std::cout << std::get<std::string>(r.values_[i]);
+//                         else if (std::holds_alternative<bool>(r.values_[i])) std::cout << (std::get<bool>(r.values_[i]) ? "true" : "false");
+//                         if (i + 1 < r.values_.size()) std::cout << ", ";
+//                     }
+//                     std::cout << "}\n";
+//                 }
+//                 break;
+//             }
+//             case DELETE_STMT: {
+//                 ASTNode* from = stmt->children[0];
+//                 std::string table;
+//                 if (std::holds_alternative<std::string>(from->value)) table = std::get<std::string>(from->value);
+//                 std::string cond;
+//                 if (stmt->children.size() > 1) cond = build_condition_from_where(stmt->children[1]);
+//                 if (!tm.TableExists(table)) { std::cout << "ERR: table not found: " << table << "\n"; break; }
+//                 int n = tm.DeleteRecordsWithCondition(table, cond);
+//                 std::cout << "deleted=" << n << "\n";
+//                 break;
+//             }
+//             default:
+//                 std::cout << "WARN: unsupported statement type: " << (int)stmt->type << "\n";
+//         }
+//         } catch (const std::bad_variant_access&) {
+//             std::cout << "ERR: bad value type in statement (variant access)\n";
+//         } catch (const std::exception& e) {
+//             std::cout << "ERR: " << e.what() << "\n";
+//         }
+//     }
+// }
 
 static void print_help() {
     std::cout << "Commands:\n"
@@ -356,7 +402,7 @@ int main() {
             ast_root = nullptr;
             int rc = yyparse();
             if (rc == 0 && ast_root) {
-                execute_ast(ast_root, table_manager);
+                execute_ast_with_executor(ast_root, table_manager);
             } else {
                 std::cout << "Parse error\n";
             }
