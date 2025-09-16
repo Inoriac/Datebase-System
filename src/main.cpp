@@ -122,6 +122,8 @@ static void execute_ast_with_executor(ASTNode* root, TableManager& tm) {
                                 std::cout << std::get<int>(tuple[i]);
                             } else if (std::holds_alternative<std::string>(tuple[i])) {
                                 std::cout << std::get<std::string>(tuple[i]);
+                            } else if (std::holds_alternative<double>(tuple[i])) {
+                                std::cout << std::get<double>(tuple[i]);
                             } else if (std::holds_alternative<bool>(tuple[i])) {
                                 std::cout << (std::get<bool>(tuple[i]) ? "true" : "false");
                             }

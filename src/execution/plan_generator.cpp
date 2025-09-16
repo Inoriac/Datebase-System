@@ -1,6 +1,8 @@
 #include "plan_generator.h"
 #include "symbol_table.h"
 #include "log/log_config.h"
+#include "catalog/table_manager.h"
+#include "catalog/types.h"
 #include <iostream>
 
 // 主方法：调用递归访问函数
@@ -43,7 +45,7 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
             std::string col_type = std::get<std::string>(col_node->children[0]->value);
             columns.push_back({col_name, col_type});
         }
-        return std::make_unique<CreateTableOperator>(table_name, columns);
+        return std::make_unique<CreateTableOperator>(table_name, columns, table_manager_);
     }
     case INSERT_STMT:
     {
@@ -71,12 +73,17 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
 
         // 获取值列表
         std::vector<LiteralValue> values;
-        for (ASTNode *val_node : values_list->children)
-        {
-            values.push_back(evaluateLiteral(val_node)); // 使用辅助函数来简化
+        std::cout << "PlanGenerator: Processing " << values_list->children.size() << " values" << std::endl;
+        for (size_t i = 0; i < values_list->children.size(); ++i) {
+            ASTNode *val_node = values_list->children[i];
+            std::cout << "PlanGenerator: Processing value " << i << ", node type=" << (int)val_node->type << std::endl;
+            LiteralValue val = evaluateLiteral(val_node);
+            values.push_back(val);
+            std::cout << "PlanGenerator: Added value " << i << std::endl;
         }
+        std::cout << "PlanGenerator: Total values collected: " << values.size() << std::endl;
 
-        return std::make_unique<InsertOperator>(table_name, std::move(values), std::move(column_names));
+        return std::make_unique<InsertOperator>(table_name, std::move(values), std::move(column_names), table_manager_);
     }
     case SELECT_STMT:
     {
@@ -86,10 +93,27 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
 
         // 创建一个用于传递给算子的表信息映射
         std::unordered_map<std::string, const TableInfo *> tables;
-        tables[table_name] = &catalog.getTable(table_name);
+        // 从TableManager获取表信息，如果不存在则从catalog获取（向后兼容）
+        if (table_manager_ && table_manager_->TableExists(table_name)) {
+            // 从TableManager获取表结构，转换为TableInfo格式
+            TableSchema* schema = table_manager_->GetTableSchema(table_name);
+            if (schema) {
+                // 创建临时的TableInfo对象
+                static TableInfo temp_table_info;
+                temp_table_info.name = table_name;
+                temp_table_info.column_order.clear();
+                for (const auto& col : schema->columns_) {
+                    temp_table_info.column_order.push_back(col.column_name_);
+                }
+                tables[table_name] = &temp_table_info;
+            }
+        } else {
+            // 回退到catalog
+            tables[table_name] = &catalog.getTable(table_name);
+        }
 
         // 1. 创建 SeqScanOperator
-        std::unique_ptr<Operator> child_op = std::make_unique<SeqScanOperator>(table_name);
+        std::unique_ptr<Operator> child_op = std::make_unique<SeqScanOperator>(table_name, table_manager_);
 
         // 2. 如果有 WHERE 子句，创建 FilterOperator
         if (node->children.size() > 2 && node->children[2]->type == WHERE_CLAUSE)
@@ -105,8 +129,8 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
         // 检查是否是 SELECT *
         if (select_list_node->children.size() == 1 && std::get<std::string>(select_list_node->children[0]->value) == "*")
         {
-            // 从目录中获取所有列
-            const TableInfo &table_info = catalog.getTable(table_name);
+            // 从tables映射中获取所有列
+            const TableInfo &table_info = *tables[table_name];
             columns = table_info.column_order;
         }
         else
@@ -129,10 +153,27 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
 
         std::string table_name = std::get<std::string>(from_node->value);
         std::unordered_map<std::string, const TableInfo *> tables;
-        tables[table_name] = &catalog.getTable(table_name);
+        // 从TableManager获取表信息，如果不存在则从catalog获取（向后兼容）
+        if (table_manager_ && table_manager_->TableExists(table_name)) {
+            // 从TableManager获取表结构，转换为TableInfo格式
+            TableSchema* schema = table_manager_->GetTableSchema(table_name);
+            if (schema) {
+                // 创建临时的TableInfo对象
+                static TableInfo temp_table_info;
+                temp_table_info.name = table_name;
+                temp_table_info.column_order.clear();
+                for (const auto& col : schema->columns_) {
+                    temp_table_info.column_order.push_back(col.column_name_);
+                }
+                tables[table_name] = &temp_table_info;
+            }
+        } else {
+            // 回退到catalog
+            tables[table_name] = &catalog.getTable(table_name);
+        }
 
         // 1. 创建 SeqScanOperator
-        std::unique_ptr<Operator> scan_op = std::make_unique<SeqScanOperator>(table_name);
+        std::unique_ptr<Operator> scan_op = std::make_unique<SeqScanOperator>(table_name, table_manager_);
 
         // 2. 创建 FilterOperator
         std::unique_ptr<Operator> filter_op = std::make_unique<FilterOperator>(std::move(scan_op), where_node->children[0], tables);
@@ -147,10 +188,27 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
 
         // 1. 创建 SeqScanOperator
         std::string table_name = std::get<std::string>(table_name_node->value);
-        std::unique_ptr<Operator> plan = std::make_unique<SeqScanOperator>(table_name);
+        std::unique_ptr<Operator> plan = std::make_unique<SeqScanOperator>(table_name, table_manager_);
 
         std::unordered_map<std::string, const TableInfo *> tables;
-        tables[table_name] = &catalog.getTable(table_name);
+        // 从TableManager获取表信息，如果不存在则从catalog获取（向后兼容）
+        if (table_manager_ && table_manager_->TableExists(table_name)) {
+            // 从TableManager获取表结构，转换为TableInfo格式
+            TableSchema* schema = table_manager_->GetTableSchema(table_name);
+            if (schema) {
+                // 创建临时的TableInfo对象
+                static TableInfo temp_table_info;
+                temp_table_info.name = table_name;
+                temp_table_info.column_order.clear();
+                for (const auto& col : schema->columns_) {
+                    temp_table_info.column_order.push_back(col.column_name_);
+                }
+                tables[table_name] = &temp_table_info;
+            }
+        } else {
+            // 回退到catalog
+            tables[table_name] = &catalog.getTable(table_name);
+        }
 
         // 2. 如果有 WHERE 子句，创建 FilterOperator
         if (node->children.size() > 2)
@@ -172,7 +230,7 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
         }
 
         // 4. 创建最终的 UpdateOperator
-        return std::make_unique<UpdateOperator>(std::move(plan), table_name, updates);
+        return std::make_unique<UpdateOperator>(std::move(plan), table_name, updates, table_manager_);
     }
     default:
         throw SemanticError(SemanticError::SYNTAX_ERROR, "Unsupported statement type.", node); // 暂无位置信息

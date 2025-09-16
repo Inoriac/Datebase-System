@@ -146,16 +146,23 @@ LiteralValue evaluateLiteral(ASTNode* node) {
     if (!node) {
         throw std::runtime_error("Attempted to evaluate a null AST node.");
     }
+    
+    std::cout << "evaluateLiteral: node type=" << (int)node->type << std::endl;
+    
     // 使用 std::visit 安全地访问 variant 的值
     return std::visit([](const auto& val) -> LiteralValue {
         using T = std::decay_t<decltype(val)>;
         if constexpr (std::is_same_v<T, int>) {
+            std::cout << "evaluateLiteral: int value=" << val << std::endl;
             return val;
         } else if constexpr (std::is_same_v<T, std::string>) {
+            std::cout << "evaluateLiteral: string value='" << val << "'" << std::endl;
             return val;
         } else if constexpr (std::is_same_v<T, double>) {
+            std::cout << "evaluateLiteral: double value=" << val << std::endl;
             return val;
         } else if constexpr (std::is_same_v<T, bool>) {
+            std::cout << "evaluateLiteral: bool value=" << val << std::endl;
             return val;
         }
         throw std::runtime_error("Unsupported variant type in evaluateLiteral.");

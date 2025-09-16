@@ -14,7 +14,7 @@ class TableManager;
 struct TableInfo;
 
 // 代表一行数据，可以是任意类型
-using Tuple = std::vector<std::variant<int, std::string, bool>>;
+using Tuple = std::vector<std::variant<int, std::string, double, bool>>;
 
 // 算子类型
 enum OperatorType
@@ -66,23 +66,22 @@ public:
         : table_name(table_name), column_names(std::move(column_names)), table_manager_(nullptr)
     {
         type = INSERT_OP;
-        // 转换Tuple类型
-        for (const auto& val : values) {
-            if (std::holds_alternative<int>(val)) {
-                this->values.push_back(std::get<int>(val));
-            } else if (std::holds_alternative<std::string>(val)) {
-                this->values.push_back(std::get<std::string>(val));
-            } else if (std::holds_alternative<bool>(val)) {
-                this->values.push_back(std::get<bool>(val));
-            } else if (std::holds_alternative<double>(val)) {
-                this->values.push_back(static_cast<int>(std::get<double>(val)));
-            }
-        }
+        // 直接复制values，类型已经匹配
+        this->values = values;
+    }
+    
+    // 1.1. 新版本：使用Tuple、column_names和TableManager
+    InsertOperator(const std::string &table_name, const std::vector<std::variant<int, std::string, double, bool>>& values, std::vector<std::string> column_names, TableManager* table_manager)
+        : table_name(table_name), column_names(std::move(column_names)), table_manager_(table_manager)
+    {
+        type = INSERT_OP;
+        // 直接复制values，类型已经匹配
+        this->values = values;
     }
     
     // 2. 旧版本：使用TableManager
     InsertOperator(const std::string &table_name,
-                   const std::vector<std::variant<int, std::string, bool>> &values,
+                   const std::vector<std::variant<int, std::string, double, bool>> &values,
                    TableManager* table_manager = nullptr)
         : table_name(table_name), values(values), table_manager_(table_manager)
     {
@@ -96,7 +95,7 @@ public:
         : table_name(table_name), columns(columns), table_manager_(nullptr)
     {
         type = INSERT_OP;
-        // 转换values类型
+        // 转换values类型，从旧版本variant到新版本variant
         for (const auto& val : values) {
             if (std::holds_alternative<int>(val)) {
                 this->values.push_back(std::get<int>(val));
@@ -110,7 +109,7 @@ public:
     std::string table_name;
     std::vector<std::string> columns; // 可选列列表
     std::vector<std::string> column_names; // 新版本列名
-    std::vector<std::variant<int, std::string, bool>> values;
+    std::vector<std::variant<int, std::string, double, bool>> values;
     TableManager* table_manager_;
 };
 
@@ -119,9 +118,9 @@ public:
 class UpdateOperator : public Operator {
 public:
     // 兼容两种构造函数
-    // 1. 新版本：包含table_name
-    UpdateOperator(std::unique_ptr<Operator>&& child_op, const std::string& table_name, const std::vector<std::pair<std::string, ASTNode*>>& updates)
-     : table_name(table_name), updates(updates) {
+    // 1. 新版本：包含table_name和TableManager
+    UpdateOperator(std::unique_ptr<Operator>&& child_op, const std::string& table_name, const std::vector<std::pair<std::string, ASTNode*>>& updates, TableManager* table_manager = nullptr)
+     : table_name(table_name), updates(updates), table_manager_(table_manager) {
         type = UPDATE_OP;
         child = std::move(child_op);
     }
@@ -136,6 +135,7 @@ public:
     std::unique_ptr<Tuple> next() override;
     std::string table_name; // 新版本需要表名
     std::vector<std::pair<std::string, ASTNode*>> updates;
+    TableManager* table_manager_; // TableManager指针
 };
 
 // 删除（Delete）算子
