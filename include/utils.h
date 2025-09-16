@@ -22,7 +22,6 @@ int get_edit_distance(const std::string& s1, const std::string& s2);
 
 // 定义一个别名，以便在多个地方使用相同的 variant 类型
 using LiteralValue = std::variant<int, std::string, double, bool>;
-using Tuple = std::vector<LiteralValue>;
 
 
 // 辅助函数：将字符串按分隔符分割

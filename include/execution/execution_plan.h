@@ -7,9 +7,11 @@
 #include <string>
 #include <variant>
 #include <memory>
+#include <unordered_map>
 
 // 前向声明
 class TableManager;
+struct TableInfo;
 
 // 代表一行数据，可以是任意类型
 using Tuple = std::vector<std::variant<int, std::string, bool>>;
@@ -22,9 +24,9 @@ enum OperatorType
     SEQ_SCAN_OP,
     FILTER_OP,
     PROJECT_OP,
-    UPDATE_OP, // <-- 新增
-    DELETE_OP, // <-- 新增
-    JOIN_OP,   // <-- 新增
+    UPDATE_OP,
+    DELETE_OP,
+    JOIN_OP,
     INVALID_OP
 };
 
@@ -43,11 +45,12 @@ public:
 class CreateTableOperator : public Operator
 {
 public:
-    CreateTableOperator(const std::string &table_name, const std::vector<std::pair<std::string, std::string>> &columns, TableManager* table_manager)
+    // 兼容两种构造函数
+    CreateTableOperator(const std::string &table_name, const std::vector<std::pair<std::string, std::string>> &columns, TableManager* table_manager = nullptr)
         : table_name(table_name), columns(columns), table_manager_(table_manager)
     {
         type = CREATE_TABLE_OP;
-    }
+    } 
     std::unique_ptr<Tuple> next() override;
     std::string table_name;
     std::vector<std::pair<std::string, std::string>> columns;
@@ -57,18 +60,56 @@ public:
 class InsertOperator : public Operator
 {
 public:
-    // 增加一个列列表参数，可以为空
+    // 兼容三种构造函数
+    // 1. 新版本：使用Tuple和column_names
+    InsertOperator(const std::string &table_name, const std::vector<std::variant<int, std::string, double, bool>>& values, std::vector<std::string> column_names)
+        : table_name(table_name), column_names(std::move(column_names)), table_manager_(nullptr)
+    {
+        type = INSERT_OP;
+        // 转换Tuple类型
+        for (const auto& val : values) {
+            if (std::holds_alternative<int>(val)) {
+                this->values.push_back(std::get<int>(val));
+            } else if (std::holds_alternative<std::string>(val)) {
+                this->values.push_back(std::get<std::string>(val));
+            } else if (std::holds_alternative<bool>(val)) {
+                this->values.push_back(std::get<bool>(val));
+            } else if (std::holds_alternative<double>(val)) {
+                this->values.push_back(static_cast<int>(std::get<double>(val)));
+            }
+        }
+    }
+    
+    // 2. 旧版本：使用TableManager
     InsertOperator(const std::string &table_name,
-                   const std::vector<std::string>& columns,
-                   const std::vector<std::variant<int, std::string>> &values)
-        : table_name(table_name), columns(columns), values(values)
+                   const std::vector<std::variant<int, std::string, bool>> &values,
+                   TableManager* table_manager = nullptr)
+        : table_name(table_name), values(values), table_manager_(table_manager)
     {
         type = INSERT_OP;
     }
+    
+    // 3. 旧版本：使用columns和values
+    InsertOperator(const std::string &table_name,
+                   const std::vector<std::string>& columns,
+                   const std::vector<std::variant<int, std::string>> &values)
+        : table_name(table_name), columns(columns), table_manager_(nullptr)
+    {
+        type = INSERT_OP;
+        // 转换values类型
+        for (const auto& val : values) {
+            if (std::holds_alternative<int>(val)) {
+                this->values.push_back(std::get<int>(val));
+            } else if (std::holds_alternative<std::string>(val)) {
+                this->values.push_back(std::get<std::string>(val));
+            }
+        }
+    }
+    
     std::unique_ptr<Tuple> next() override;
     std::string table_name;
-    std::vector<std::string> columns; // <-- 新增
-    std::vector<std::variant<int, std::string>> values;
+    std::vector<std::string> columns; // 可选列列表
+    std::vector<std::string> column_names; // 新版本列名
     std::vector<std::variant<int, std::string, bool>> values;
     TableManager* table_manager_;
 };
@@ -77,13 +118,23 @@ public:
 // 更新（Update）算子
 class UpdateOperator : public Operator {
 public:
-    // child_op 是 filtered rows, updates 是 SET 子句中的赋值表达式
+    // 兼容两种构造函数
+    // 1. 新版本：包含table_name
+    UpdateOperator(std::unique_ptr<Operator>&& child_op, const std::string& table_name, const std::vector<std::pair<std::string, ASTNode*>>& updates)
+     : table_name(table_name), updates(updates) {
+        type = UPDATE_OP;
+        child = std::move(child_op);
+    }
+    
+    // 2. 旧版本：不包含table_name
     UpdateOperator(std::unique_ptr<Operator>&& child_op, const std::vector<std::pair<std::string, ASTNode*>>& updates)
      : updates(updates) {
         type = UPDATE_OP;
         child = std::move(child_op);
     }
+    
     std::unique_ptr<Tuple> next() override;
+    std::string table_name; // 新版本需要表名
     std::vector<std::pair<std::string, ASTNode*>> updates;
 };
 
@@ -118,11 +169,14 @@ public:
 class SeqScanOperator : public Operator
 {
 public:
+    // 兼容两种构造函数
     SeqScanOperator(const std::string &table_name, TableManager* table_manager);
+    SeqScanOperator(const std::string &table_name);
+    
     std::unique_ptr<Tuple> next() override;
     std::string table_name;
     size_t current_row_index = 0; // 表数据迭代索引
-    std::vector<std::vector<std::variant<int, std::string, bool>>> all_records_; // 缓存所有记录
+    std::vector<Tuple> all_records_; // 缓存所有记录
 
 private:
     TableManager* table_manager_;
@@ -132,19 +186,41 @@ private:
 class FilterOperator : public Operator
 {
 public:
-    FilterOperator(std::unique_ptr<Operator> &&child_op, ASTNode *condition, TableManager* table_manager)
+    // 兼容三种构造函数
+    // 1. 新版本：使用tables映射
+    FilterOperator(std::unique_ptr<Operator> &&child_op, ASTNode *condition, const std::unordered_map<std::string, const TableInfo*>& tables)
+        : condition(condition), tables(tables), table_manager_(nullptr)
+    {
+        type = FILTER_OP;
+        child = std::move(child_op);
+        current_row_index = 0;
+    }
+    
+    // 2. 旧版本：使用TableManager
+    FilterOperator(std::unique_ptr<Operator> &&child_op, ASTNode *condition, TableManager* table_manager = nullptr)
         : condition(condition), table_manager_(table_manager)
     {
         type = FILTER_OP;
         child = std::move(child_op);
         current_row_index = 0;
     }
+    
+    // 3. 旧版本：不使用TableManager
+    FilterOperator(std::unique_ptr<Operator> &&child_op, ASTNode *condition)
+        : condition(condition), table_manager_(nullptr)
+    {
+        type = FILTER_OP;
+        child = std::move(child_op);
+        current_row_index = 0;
+    }
+    
     std::unique_ptr<Tuple> next() override;
     ASTNode *condition;
 
 private:
     bool evaluateCondition(const Tuple& tuple, ASTNode* condition);
-    TableManager* table_manager_;
+    std::unordered_map<std::string, const TableInfo*> tables; // 新版本表信息映射
+    TableManager* table_manager_; // 旧版本TableManager
     std::vector<Tuple> all_records_;
     size_t current_row_index;
 };
@@ -153,9 +229,27 @@ private:
 class ProjectOperator : public Operator
 {
 public:
-    ProjectOperator(std::unique_ptr<Operator> &&child_op, const std::vector<std::string> &columns);
+    // 兼容两种构造函数
+    // 1. 新版本：包含table_name和tables映射
+    ProjectOperator(std::unique_ptr<Operator> &&child_op, const std::string &table_name, const std::vector<std::string> &columns, const std::unordered_map<std::string, const TableInfo*>& tables)
+        : table_name(table_name), columns(columns), tables(tables)
+    {
+        type = PROJECT_OP;
+        child = std::move(child_op);
+    }
+    
+    // 2. 旧版本：只包含columns
+    ProjectOperator(std::unique_ptr<Operator> &&child_op, const std::vector<std::string> &columns)
+        : columns(columns)
+    {
+        type = PROJECT_OP;
+        child = std::move(child_op);
+    }
+    
     std::unique_ptr<Tuple> next() override;
+    std::string table_name; // 新版本需要表名
     std::vector<std::string> columns;
+    std::unordered_map<std::string, const TableInfo*> tables; // 新版本表信息映射
 
 private:
 };

@@ -1,8 +1,8 @@
 #ifndef EXECUTOR_H
 #define EXECUTOR_H
 
-#include "execution_plan.h"
-#include "../log/log_config.h"
+#include "execution/execution_plan.h"
+#include "log/log_config.h"
 #include <memory>
 
 class Executor {

@@ -1,6 +1,8 @@
 #include "plan_generator.h"
 #include "symbol_table.h"
 #include "log/log_config.h"
+#include "catalog/table_manager.h" // 旧版本TableManager
+#include "utils.h" // 新版本需要
 #include <iostream>
 
 // 主方法：调用递归访问函数
@@ -43,7 +45,11 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
             std::string col_type = std::get<std::string>(col_node->children[0]->value);
             columns.push_back({col_name, col_type});
         }
-        return std::make_unique<CreateTableOperator>(table_name, columns);
+        if (table_manager_) {
+            return std::make_unique<CreateTableOperator>(table_name, columns, table_manager_);
+        } else {
+            return std::make_unique<CreateTableOperator>(table_name, columns);
+        }
     }
     case INSERT_STMT:
     {
@@ -76,7 +82,25 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
             values.push_back(evaluateLiteral(val_node)); // 使用辅助函数来简化
         }
 
-        return std::make_unique<InsertOperator>(table_name, std::move(values), std::move(column_names));
+        if (table_manager_) {
+            // 旧版本：使用TableManager
+            std::vector<std::variant<int, std::string, bool>> old_values;
+            for (const auto& val : values) {
+                if (std::holds_alternative<int>(val)) {
+                    old_values.push_back(std::get<int>(val));
+                } else if (std::holds_alternative<std::string>(val)) {
+                    old_values.push_back(std::get<std::string>(val));
+                } else if (std::holds_alternative<bool>(val)) {
+                    old_values.push_back(std::get<bool>(val));
+                } else if (std::holds_alternative<double>(val)) {
+                    old_values.push_back(static_cast<int>(std::get<double>(val)));
+                }
+            }
+            return std::make_unique<InsertOperator>(table_name, old_values, table_manager_);
+        } else {
+            // 新版本：使用内存存储
+            return std::make_unique<InsertOperator>(table_name, std::move(values), std::move(column_names));
+        }
     }
     case SELECT_STMT:
     {
@@ -92,22 +116,60 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
         tables[table_name] = &catalog.getTable(table_name);
 
         // 1. 创建 SeqScanOperator
-        plan_root = std::make_unique<SeqScanOperator>(table_name);
+        if (table_manager_) {
+            plan_root = std::make_unique<SeqScanOperator>(table_name, table_manager_);
+        } else {
+            plan_root = std::make_unique<SeqScanOperator>(table_name);
+        }
 
         // 2. 如果有 WHERE 子句，创建 FilterOperator
         if (node->children.size() > 2)
         {
             ASTNode *where_node = node->children[2];
-            plan_root = std::make_unique<FilterOperator>(std::move(plan_root), where_node->children[0], tables);
+            if (table_manager_) {
+                plan_root = std::make_unique<FilterOperator>(std::move(plan_root), where_node->children[0], table_manager_);
+            } else {
+                plan_root = std::make_unique<FilterOperator>(std::move(plan_root), where_node->children[0], tables);
+            }
         }
 
         // 3. 创建 ProjectOperator
         std::vector<std::string> columns;
-        for (ASTNode *col_node : select_list_node->children)
-        {
-            columns.push_back(std::get<std::string>(col_node->value));
+        
+        // 处理SELECT列表
+        if (select_list_node->children.size() == 1 &&
+            select_list_node->children[0]->type == IDENTIFIER_NODE &&
+            std::holds_alternative<std::string>(select_list_node->children[0]->value) &&
+            std::get<std::string>(select_list_node->children[0]->value) == "*") {
+            // SELECT * - 获取所有列
+            if (table_manager_) {
+                TableSchema* schema = table_manager_->GetTableSchema(table_name);
+                if (schema) {
+                    for (const auto& col : schema->columns_) {
+                        columns.push_back(col.column_name_);
+                    }
+                }
+            } else {
+                const TableInfo& table_info = catalog.getTable(table_name);
+                for (const auto& col_name : table_info.column_order) {
+                    columns.push_back(col_name);
+                }
+            }
+        } else {
+            // SELECT column1, column2, ... - 获取指定列
+            for (ASTNode *col_node : select_list_node->children) {
+                if (col_node->type == IDENTIFIER_NODE &&
+                    std::holds_alternative<std::string>(col_node->value)) {
+                    columns.push_back(std::get<std::string>(col_node->value));
+                }
+            }
         }
-        plan_root = std::make_unique<ProjectOperator>(std::move(plan_root), table_name, columns, tables);
+        
+        if (table_manager_) {
+            plan_root = std::make_unique<ProjectOperator>(std::move(plan_root), columns);
+        } else {
+            plan_root = std::make_unique<ProjectOperator>(std::move(plan_root), table_name, columns, tables);
+        }
 
         return plan_root;
     }
@@ -122,10 +184,20 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
         tables[table_name] = &catalog.getTable(table_name);
 
         // 1. 创建 SeqScanOperator
-        std::unique_ptr<Operator> scan_op = std::make_unique<SeqScanOperator>(table_name);
+        std::unique_ptr<Operator> scan_op;
+        if (table_manager_) {
+            scan_op = std::make_unique<SeqScanOperator>(table_name, table_manager_);
+        } else {
+            scan_op = std::make_unique<SeqScanOperator>(table_name);
+        }
 
         // 2. 创建 FilterOperator
-        std::unique_ptr<Operator> filter_op = std::make_unique<FilterOperator>(std::move(scan_op), where_node->children[0], tables);
+        std::unique_ptr<Operator> filter_op;
+        if (table_manager_) {
+            filter_op = std::make_unique<FilterOperator>(std::move(scan_op), where_node->children[0], table_manager_);
+        } else {
+            filter_op = std::make_unique<FilterOperator>(std::move(scan_op), where_node->children[0], tables);
+        }
 
         return filter_op; // DELETE 的最终算子也可以是 Filter，由后续执行器处理
     }
@@ -137,10 +209,17 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
 
         // 1. 创建 SeqScanOperator
         std::string table_name = std::get<std::string>(table_name_node->value);
-        std::unique_ptr<Operator> plan = std::make_unique<SeqScanOperator>(table_name);
+        std::unique_ptr<Operator> plan;
+        if (table_manager_) {
+            plan = std::make_unique<SeqScanOperator>(table_name, table_manager_);
+        } else {
+            plan = std::make_unique<SeqScanOperator>(table_name);
+        }
 
         std::unordered_map<std::string, const TableInfo *> tables;
-        tables[table_name] = &catalog.getTable(table_name);
+        if (!table_manager_) {
+            tables[table_name] = &catalog.getTable(table_name);
+        }
 
         // 2. 如果有 WHERE 子句，创建 FilterOperator
         if (node->children.size() > 2)
@@ -148,7 +227,11 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
             ASTNode *where_node = node->children[2];
             if (!where_node->children.empty())
             {
-                plan = std::make_unique<FilterOperator>(std::move(plan), where_node->children[0], tables);
+                if (table_manager_) {
+                    plan = std::make_unique<FilterOperator>(std::move(plan), where_node->children[0], table_manager_);
+                } else {
+                    plan = std::make_unique<FilterOperator>(std::move(plan), where_node->children[0], tables);
+                }
             }
         }
 
@@ -162,7 +245,11 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
         }
 
         // 4. 创建最终的 UpdateOperator
-        return std::make_unique<UpdateOperator>(std::move(plan), table_name, updates);
+        if (table_manager_) {
+            return std::make_unique<UpdateOperator>(std::move(plan), updates);
+        } else {
+            return std::make_unique<UpdateOperator>(std::move(plan), table_name, updates);
+        }
     }
     default:
         throw SemanticError(SemanticError::SYNTAX_ERROR, "Unsupported statement type.", node); // 暂无位置信息

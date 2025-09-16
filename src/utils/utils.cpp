@@ -1,4 +1,5 @@
 #include "utils.h"
+#include "execution/execution_plan.h"
 #include <stdexcept>
 #include <sstream>
 

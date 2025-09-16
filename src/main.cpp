@@ -7,7 +7,7 @@
 #include "ast.h"
 #include "log/log_config.h"
 #include "plan_generator.h"
-#include "../include/execution/executor.h"
+#include "executor.h"
 
 // Flex/Bison 解析接口
 extern int yyparse();

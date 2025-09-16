@@ -52,10 +52,11 @@ target_link_libraries(catalog PRIVATE log)
 add_library(execution
         src/execution/plan_generator.cpp
         src/execution/executor.cpp
+        src/utils/utils.cpp
 )
 
 target_include_directories(execution PUBLIC include)
-target_link_libraries(execution PRIVATE log)
+target_link_libraries(execution PRIVATE log catalog)
 
 # ====================
 # 主程序
