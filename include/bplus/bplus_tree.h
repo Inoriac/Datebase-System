@@ -100,6 +100,10 @@ public:
     bool InsertBatch(const std::vector<std::pair<Value, int>>& key_value_pairs);
     bool RemoveBatch(const std::vector<Value>& keys);
     
+    // 预读优化
+    void EnablePrefetch(bool enable) { prefetch_enabled_ = enable; }
+    void SetPrefetchConfig(size_t max_prefetch_pages) { max_prefetch_pages_ = max_prefetch_pages; }
+    
     // 索引维护
     bool Rebuild();
     bool Validate() const;
@@ -123,6 +127,10 @@ private:
     int root_page_id_;
     int max_keys_per_node_;
     int height_;
+    
+    // 预读配置
+    bool prefetch_enabled_ = true;
+    size_t max_prefetch_pages_ = 5;
     
     // 日志器
     std::shared_ptr<DatabaseSystem::Log::BPlusTreeLogger> logger_;

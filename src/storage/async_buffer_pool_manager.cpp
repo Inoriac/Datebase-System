@@ -86,11 +86,75 @@ std::future<bool> AsyncBufferPoolManager::UnpinPagesAsync(const std::vector<int>
 void AsyncBufferPoolManager::PrefetchPage(int page_id) {
     // 异步预取，不等待结果
     FetchPageAsync(page_id);
+    
+    // 更新统计信息
+    std::lock_guard<std::mutex> lock(prefetch_stats_mutex_);
+    prefetch_stats_.total_prefetch_requests++;
 }
 
 void AsyncBufferPoolManager::PrefetchPages(const std::vector<int>& page_ids) {
     // 异步预取多个页面
     FetchPagesAsync(page_ids);
+    
+    // 更新统计信息
+    std::lock_guard<std::mutex> lock(prefetch_stats_mutex_);
+    prefetch_stats_.total_prefetch_requests += page_ids.size();
+}
+
+// 智能预读功能实现
+void AsyncBufferPoolManager::PrefetchSequential(int start_page_id, int count) {
+    std::vector<int> page_ids;
+    page_ids.reserve(std::min(static_cast<size_t>(count), max_prefetch_pages_));
+    
+    // 生成连续的页面ID列表
+    for (int i = 0; i < count && i < static_cast<int>(max_prefetch_pages_); ++i) {
+        int page_id = start_page_id + i;
+        // 检查页面是否已经在缓存中
+        if (page_table_.count(page_id) == 0) {
+            page_ids.push_back(page_id);
+        }
+    }
+    
+    if (!page_ids.empty()) {
+        PrefetchPages(page_ids);
+    }
+}
+
+void AsyncBufferPoolManager::PrefetchRange(int start_page_id, int end_page_id) {
+    if (start_page_id > end_page_id) return;
+    
+    std::vector<int> page_ids;
+    size_t max_pages = std::min(max_prefetch_pages_, static_cast<size_t>(end_page_id - start_page_id + 1));
+    page_ids.reserve(max_pages);
+    
+    for (int page_id = start_page_id; page_id <= end_page_id && page_ids.size() < max_pages; ++page_id) {
+        // 检查页面是否已经在缓存中
+        if (page_table_.count(page_id) == 0) {
+            page_ids.push_back(page_id);
+        }
+    }
+    
+    if (!page_ids.empty()) {
+        PrefetchPages(page_ids);
+    }
+}
+
+void AsyncBufferPoolManager::SetPrefetchConfig(size_t max_prefetch_pages, size_t prefetch_threshold) {
+    max_prefetch_pages_ = max_prefetch_pages;
+    prefetch_threshold_ = prefetch_threshold;
+}
+
+AsyncBufferPoolManager::PrefetchStats AsyncBufferPoolManager::GetPrefetchStats() const {
+    std::lock_guard<std::mutex> lock(prefetch_stats_mutex_);
+    
+    // 计算命中率
+    if (prefetch_stats_.total_prefetch_requests > 0) {
+        prefetch_stats_.prefetch_hit_rate = 
+            static_cast<double>(prefetch_stats_.cache_hits_from_prefetch) / 
+            prefetch_stats_.total_prefetch_requests;
+    }
+    
+    return prefetch_stats_;
 }
 
 // 同步接口实现（保持兼容性）

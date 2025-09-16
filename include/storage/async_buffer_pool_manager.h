@@ -10,6 +10,8 @@
 #include <list>
 #include <memory>
 #include <future>
+#include <mutex>
+#include <vector>
 
 // 异步缓冲池管理器 - 完全兼容BufferPoolManager接口
 class AsyncBufferPoolManager {
@@ -40,6 +42,20 @@ public:
     void PrefetchPage(int page_id);
     void PrefetchPages(const std::vector<int>& page_ids);
     
+    // 智能预读功能
+    void PrefetchSequential(int start_page_id, int count);
+    void PrefetchRange(int start_page_id, int end_page_id);
+    void SetPrefetchConfig(size_t max_prefetch_pages, size_t prefetch_threshold);
+    
+    // 预读统计
+    struct PrefetchStats {
+        size_t total_prefetch_requests = 0;
+        size_t successful_prefetches = 0;
+        size_t cache_hits_from_prefetch = 0;
+        double prefetch_hit_rate = 0.0;
+    };
+    PrefetchStats GetPrefetchStats() const;
+    
 private:
     size_t pool_size_;
     AsyncDiskManager *disk_manager_;
@@ -48,6 +64,12 @@ private:
     std::unordered_map<int, Page*> page_table_;
     std::list<int> lru_list_;
     std::unordered_map<int, int> page_ref_count_;
+    
+    // 预读配置和统计
+    size_t max_prefetch_pages_ = 10;  // 最大预读页面数
+    size_t prefetch_threshold_ = 3;   // 预读阈值
+    mutable PrefetchStats prefetch_stats_;
+    mutable std::mutex prefetch_stats_mutex_;
     
     // 异步操作辅助
     Page* DoFetchPage(int page_id);

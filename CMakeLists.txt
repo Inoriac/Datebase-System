@@ -89,6 +89,35 @@ add_custom_command(TARGET sql POST_BUILD
         $<TARGET_FILE_DIR:sql>/test.sql)
 
 # ====================
+# 预读功能示例程序
+# ====================
+add_executable(prefetch_example
+        examples/prefetch_example.cpp
+        src/storage/prefetch_config.cpp
+        src/storage/async_buffer_pool_manager.cpp
+        src/storage/async_disk_manager.cpp
+        src/storage/buffer_pool_manager.cpp
+        src/storage/disk_manager.cpp
+        src/bplus/bplus_tree.cpp
+        src/catalog/table_manager.cpp
+        src/catalog/table_schema_manager.cpp
+        src/catalog/record_serializer.cpp
+        src/log/component_loggers.cpp
+        src/log/log_config.cpp
+        src/log/logger.cpp
+        src/utils/utils.cpp
+)
+
+target_include_directories(prefetch_example PRIVATE 
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(prefetch_example PRIVATE 
+        execution catalog log storage
+        pthread
+)
+
+# ====================
 # GoogleTest
 # ====================
 include(FetchContent)

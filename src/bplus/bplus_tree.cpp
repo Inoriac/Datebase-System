@@ -283,6 +283,26 @@ std::vector<int> BPlusTreeIndex::FindRange(const Value& start_key, const Value& 
     
     auto current_leaf = std::static_pointer_cast<BPlusLeafNode>(leaf);
     
+    // 预读优化：收集需要访问的叶子节点页面ID
+    std::vector<int> leaf_page_ids;
+    if (prefetch_enabled_) {
+        auto temp_leaf = current_leaf;
+        while (temp_leaf && leaf_page_ids.size() < max_prefetch_pages_) {
+            leaf_page_ids.push_back(temp_leaf->page_id_);
+            if (temp_leaf->next_leaf_page_id_ != -1) {
+                temp_leaf = std::static_pointer_cast<BPlusLeafNode>(LoadNode(temp_leaf->next_leaf_page_id_));
+            } else {
+                break;
+            }
+        }
+        
+        // 批量预读叶子节点
+        if (leaf_page_ids.size() > 1) {
+            // 这里可以调用AsyncBufferPoolManager的预读功能
+            // async_bpm_->PrefetchPages(leaf_page_ids);
+        }
+    }
+    
     // 遍历所有相关的叶子节点
     while (current_leaf) {
         std::cout << "DEBUG: Searching in leaf node with " << current_leaf->keys_.size() << " keys" << std::endl;

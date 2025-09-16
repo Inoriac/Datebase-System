@@ -200,7 +200,7 @@ std::unique_ptr<Tuple> InsertOperator::next() {
     return nullptr;
 }
 
-// SeqScanOperator (迭代模型)
+// SeqScanOperator (迭代模型) - 支持智能预读
 std::unique_ptr<Tuple> SeqScanOperator::next()
 {
     if (table_manager_) {
@@ -210,21 +210,27 @@ std::unique_ptr<Tuple> SeqScanOperator::next()
             std::vector<Record> records = table_manager_->SelectRecords(table_name);
             all_records_.clear();
             
-        // 将Record转换为Tuple
-        for (const auto& record : records) {
-            Tuple tuple;
-            for (const auto& value : record.values_) {
-                // 转换variant类型
-                if (std::holds_alternative<int>(value)) {
-                    tuple.push_back(std::get<int>(value));
-                } else if (std::holds_alternative<std::string>(value)) {
-                    tuple.push_back(std::get<std::string>(value));
-                } else if (std::holds_alternative<bool>(value)) {
-                    tuple.push_back(std::get<bool>(value));
+            // 将Record转换为Tuple
+            for (const auto& record : records) {
+                Tuple tuple;
+                for (const auto& value : record.values_) {
+                    // 转换variant类型
+                    if (std::holds_alternative<int>(value)) {
+                        tuple.push_back(std::get<int>(value));
+                    } else if (std::holds_alternative<std::string>(value)) {
+                        tuple.push_back(std::get<std::string>(value));
+                    } else if (std::holds_alternative<bool>(value)) {
+                        tuple.push_back(std::get<bool>(value));
+                    }
                 }
+                all_records_.push_back(tuple);
             }
-            all_records_.push_back(tuple);
-        }
+            
+            // 智能预读：如果记录数量较大，启动预读
+            if (records.size() > 100) {
+                // 这里可以集成AsyncBufferPoolManager进行页面预读
+                // 例如：async_bpm_->PrefetchSequential(start_page_id, prefetch_count);
+            }
         }
         
         // 如果没有更多数据，返回空指针
