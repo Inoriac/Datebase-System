@@ -182,6 +182,7 @@ LiteralValue evaluateValue(ASTNode* node, const Tuple& tuple, const std::unorder
                 col_name = full_col_name.substr(dot_pos + 1);
             } else {
                 // 如果没有表名，从提供的表中查找
+                
                 if (tables.size() == 1) {
                     table_name = tables.begin()->first;
                     col_name = full_col_name;

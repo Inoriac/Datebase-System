@@ -23,6 +23,10 @@ ASTNode *createMockInsertAst_order();
 ASTNode *createMockInsertWithColumnsAst();
 ASTNode *createMockInsertWithColumnsAst_order();
 
+// 新增
+ASTNode *createMockSelectAllUsersAst();
+ASTNode *createMockSelectAllOrdersAst();
+
 ASTNode *createMockSelectAst();
 ASTNode *createMockFullSelectAst();
 
@@ -173,16 +177,23 @@ int main()
         mock_statements.push_back(createMockCreateTableAst());
         mock_statements.push_back(createMockCreateTableAst_order());
 
-        mock_statements.push_back(createMockInsertAst());
-        mock_statements.push_back(createMockInsertAst_order());
-        mock_statements.push_back(createMockInsertWithColumnsAst());
         mock_statements.push_back(createMockInsertWithColumnsAst_order());
+        mock_statements.push_back(createMockInsertAst());            // 插入 (101, "Alice", 19)
+        mock_statements.push_back(createMockInsertWithColumnsAst()); // 插入 (102, "Alice", 25)
+        mock_statements.push_back(createMockInsertAst_order());      // 插入 (10001, 101)
 
-        // mock_statements.push_back(createMockSelectAst());
-        // mock_statements.push_back(createMockFullSelectAst());
+        // 3. 检查数据 - 在 UPDATE 前执行
+        mock_statements.push_back(createMockSelectAllUsersAst());
+        mock_statements.push_back(createMockSelectAllOrdersAst());
 
-        // mock_statements.push_back(createMockDeleteAst());
+        mock_statements.push_back(createMockSelectAst());
+        mock_statements.push_back(createMockFullSelectAst());
+
         mock_statements.push_back(createMockUpdateAst());
+        mock_statements.push_back(createMockSelectAllUsersAst());
+
+        mock_statements.push_back(createMockDeleteAst());
+
 
         for (ASTNode *current_statement_node : mock_statements)
         {
@@ -395,7 +406,7 @@ ASTNode *createMockInsertWithColumnsAst()
     values_list->addChild(int_val);
 
     // 字符串常量值节点
-    ASTNode *string_val = new ASTNode(STRING_LITERAL_NODE, "Alice");
+    ASTNode *string_val = new ASTNode(STRING_LITERAL_NODE, "Bob");
     values_list->addChild(string_val);
 
     ASTNode *int_val_ = new ASTNode(INTEGER_LITERAL_NODE, 25);
@@ -609,7 +620,7 @@ ASTNode *createMockUpdateAst()
     where_clause_node->addChild(condition_equal_op_node);
 
     // Column name in WHERE: 'id'
-    ASTNode *id_col_node = new ASTNode(IDENTIFIER_NODE, "id");
+    ASTNode *id_col_node = new ASTNode(IDENTIFIER_NODE, "users.id");
     condition_equal_op_node->addChild(id_col_node);
 
     // Value in WHERE: 1
@@ -638,4 +649,39 @@ ASTNode *createMockInsertAst_TableDoesNotExist()
     values_list->addChild(int_val);
 
     return insert_stmt;
+}
+
+ASTNode *createMockSelectAllUsersAst()
+{
+    ASTNode *select_stmt = new ASTNode(SELECT_STMT, "");
+
+    // SELECT 列表 - '*'
+    ASTNode *select_list = new ASTNode(SELECT_LIST, "");
+    select_stmt->addChild(select_list);
+    select_list->addChild(new ASTNode(IDENTIFIER_NODE, "*"));
+
+    // FROM 子句
+    ASTNode *from_node = new ASTNode(FROM_CLAUSE, "users");
+    select_stmt->addChild(from_node);
+
+    return select_stmt;
+}
+
+/*
+    模拟 SELECT * FROM orders;
+*/
+ASTNode *createMockSelectAllOrdersAst()
+{
+    ASTNode *select_stmt = new ASTNode(SELECT_STMT, "");
+
+    // SELECT 列表 - '*'
+    ASTNode *select_list = new ASTNode(SELECT_LIST, "");
+    select_stmt->addChild(select_list);
+    select_list->addChild(new ASTNode(IDENTIFIER_NODE, "*"));
+
+    // FROM 子句
+    ASTNode *from_node = new ASTNode(FROM_CLAUSE, "orders");
+    select_stmt->addChild(from_node);
+
+    return select_stmt;
 }
