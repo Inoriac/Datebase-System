@@ -336,8 +336,7 @@ int main() {
     DiskManager disk_manager("db.data", 2); // 2个工作线程
     BufferPoolManager buffer_pool(128, &disk_manager);
     TableManager table_manager(&buffer_pool);
-    // 启动时加载所有已持久化的表结构，避免重启后重复创建同名表
-    (void)table_manager.LoadAllTableSchemas();
+    // TableManager构造函数中已经调用了LoadAllTableSchemas()
     // 启动时打印最多6个已有表名
     {
         auto names = table_manager.ListTableNames();
@@ -360,7 +359,11 @@ int main() {
         std::cout << "> ";
         if (!std::getline(std::cin, line)) break;
         if (line == "help") { print_help(); continue; }
-        if (line == "exit") { break; }
+        if (line == "exit") { 
+            // 显式保存数据
+            std::cout << "Saving data...\n";
+            break; 
+        }
         // 累积当前行
         buffer.append(line);
         buffer.push_back('\n');
@@ -418,5 +421,9 @@ int main() {
         }
     }
 
+    // 显式保存所有数据
+    std::cout << "Saving all data to disk...\n";
+    // TableManager的析构函数会自动调用SaveAllTableSchemas()和SaveRootDirectory()
+    
     return 0;
 }

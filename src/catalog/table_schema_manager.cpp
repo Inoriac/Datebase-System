@@ -36,19 +36,34 @@ bool TableSchemaManager::InitializeSystemCatalog() {
 bool TableSchemaManager::SaveTableSchema(const TableSchema& schema) {
     // 确保系统目录表已初始化
     if (!InitializeSystemCatalog()) {
+        std::cerr << "TableSchemaManager: 初始化系统目录表失败" << std::endl;
         return false;
     }
 
     // 序列化表结构
     std::string schema_data = SerializeSchema(schema);
+    std::cout << "TableSchemaManager: 保存表结构 " << schema.table_name_ << std::endl;
     
     // 创建记录
     Record record;
     record.AddValue(Value(schema.table_name_));
     record.AddValue(Value(schema_data));
     
+    // 检查表是否已存在，如果存在则跳过保存（避免主键冲突）
+    TableSchema existing_schema;
+    if (LoadTableSchema(schema.table_name_, existing_schema)) {
+        std::cout << "TableSchemaManager: 表结构已存在，跳过保存: " << schema.table_name_ << std::endl;
+        return true;
+    }
+    
     // 使用 TableManager 插入记录到系统目录表（保留历史，读取时取最新）
-    return table_manager_->InsertRecord(SYSTEM_CATALOG_TABLE_NAME, record);
+    bool result = table_manager_->InsertRecord(SYSTEM_CATALOG_TABLE_NAME, record);
+    if (!result) {
+        std::cerr << "TableSchemaManager: 插入记录到系统目录表失败: " << schema.table_name_ << std::endl;
+    } else {
+        std::cout << "TableSchemaManager: 成功保存表结构: " << schema.table_name_ << std::endl;
+    }
+    return result;
 }
 
 bool TableSchemaManager::LoadTableSchema(const std::string& table_name, TableSchema& schema) {

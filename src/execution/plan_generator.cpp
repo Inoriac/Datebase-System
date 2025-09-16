@@ -41,20 +41,47 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode* node) {
             return std::make_unique<CreateTableOperator>(table_name, columns, table_manager_);
         }
         case INSERT_STMT: {
-            // 获取表名
+            // 检查children是否存在
+            if (node->children.empty()) {
+                throw std::runtime_error("INSERT statement has no children");
+            }
+            
+            // 获取表名 - children[0] 是 IDENTIFIER_NODE 类型
+            if (!node->children[0]) {
+                throw std::runtime_error("Table name node is null");
+            }
             std::string table_name = std::get<std::string>(node->children[0]->value);
-            // 获取值列表
+            
+            // 获取值列表 - 根据语法定义，值列表在最后一个子节点位置
             std::vector<std::variant<int, std::string, bool>> values;
-            ASTNode* val_list = node->children[1];
-            for (ASTNode* val_node : val_list->children) {
+            if (node->children.size() < 2) {
+                throw std::runtime_error("INSERT statement missing value list");
+            }
+            
+            // 值列表总是在最后一个子节点
+            ASTNode* val_list = node->children.back();
+            if (!val_list) {
+                throw std::runtime_error("Value list node is null");
+            }
+            
+            for (size_t i = 0; i < val_list->children.size(); ++i) {
+                ASTNode* val_node = val_list->children[i];
+                if (!val_node) {
+                    continue;
+                }
+                
                 if (val_node->type == INTEGER_LITERAL_NODE) {
-                    values.push_back(std::get<int>(val_node->value));
+                    // INTEGER_LITERAL_NODE 的值实际上是字符串，需要转换为整数
+                    std::string str_value = std::get<std::string>(val_node->value);
+                    int int_value = std::stoi(str_value);
+                    values.push_back(int_value);
                 } else if (val_node->type == STRING_LITERAL_NODE) {
                     values.push_back(std::get<std::string>(val_node->value));
                 } else if (std::holds_alternative<bool>(val_node->value)) {
                     values.push_back(std::get<bool>(val_node->value));
                 }
             }
+            
             return std::make_unique<InsertOperator>(table_name, values, table_manager_);
         }
         case SELECT_STMT: {
@@ -65,6 +92,7 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode* node) {
             std::unique_ptr<Operator> plan_root = nullptr;
             
             // 1. 创建 SeqScanOperator
+            // from_node 是 FROM_CLAUSE 类型，表名在其 value 中
             std::string table_name = std::get<std::string>(from_node->value);
             std::unique_ptr<Operator> scan_op = std::make_unique<SeqScanOperator>(table_name, table_manager_);
             plan_root = std::move(scan_op);
@@ -72,15 +100,35 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode* node) {
             // 2. 如果有 WHERE 子句，创建 FilterOperator
             if (node->children.size() > 2) {
                 ASTNode* where_node = node->children[2];
-                std::unique_ptr<Operator> filter_op = std::make_unique<FilterOperator>(std::move(plan_root), where_node->children[0]);
+                std::unique_ptr<Operator> filter_op = std::make_unique<FilterOperator>(std::move(plan_root), where_node->children[0], table_manager_);
                 plan_root = std::move(filter_op);
             }
             
             // 3. 创建 ProjectOperator
             std::vector<std::string> columns;
-            for (ASTNode* col_node : select_list_node->children) {
-                columns.push_back(std::get<std::string>(col_node->value));
+            
+            // 处理SELECT列表
+            if (select_list_node->children.size() == 1 &&
+                select_list_node->children[0]->type == IDENTIFIER_NODE &&
+                std::holds_alternative<std::string>(select_list_node->children[0]->value) &&
+                std::get<std::string>(select_list_node->children[0]->value) == "*") {
+                // SELECT * - 获取所有列
+                TableSchema* schema = table_manager_->GetTableSchema(table_name);
+                if (schema) {
+                    for (const auto& col : schema->columns_) {
+                        columns.push_back(col.column_name_);
+                    }
+                }
+            } else {
+                // SELECT column1, column2, ... - 获取指定列
+                for (ASTNode* col_node : select_list_node->children) {
+                    if (col_node->type == IDENTIFIER_NODE &&
+                        std::holds_alternative<std::string>(col_node->value)) {
+                        columns.push_back(std::get<std::string>(col_node->value));
+                    }
+                }
             }
+            
             std::unique_ptr<Operator> project_op = std::make_unique<ProjectOperator>(std::move(plan_root), columns);
             plan_root = std::move(project_op);
 
@@ -96,7 +144,7 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode* node) {
             std::unique_ptr<Operator> scan_op = std::make_unique<SeqScanOperator>(table_name, table_manager_);
             
             // 2. 创建 FilterOperator
-            std::unique_ptr<Operator> filter_op = std::make_unique<FilterOperator>(std::move(scan_op), where_node->children[0]);
+            std::unique_ptr<Operator> filter_op = std::make_unique<FilterOperator>(std::move(scan_op), where_node->children[0], table_manager_);
             
             return filter_op; // DELETE 的最终算子也可以是 Filter，由后续执行器处理
         }

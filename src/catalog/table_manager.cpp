@@ -27,14 +27,22 @@ bool TableManager::LoadAllTableSchemas() {
 bool TableManager::SaveAllTableSchemas() {
     // 保存所有表结构到持久化存储
     if (schema_manager_ == nullptr) {
+        logger_->Error("TableManager: schema_manager_ is null");
         return false;
     }
+    
+    logger_->Info("TableManager: 开始保存 {} 个表结构", table_schemas_.size());
     bool success = true;
     for (const auto& pair : table_schemas_) {
+        logger_->Info("TableManager: 保存表结构: {}", pair.first);
         if (!schema_manager_->SaveTableSchema(pair.second)) {
+            logger_->Error("TableManager: 保存表结构失败: {}", pair.first);
             success = false;
+        } else {
+            logger_->Info("TableManager: 保存表结构成功: {}", pair.first);
         }
     }
+    logger_->Info("TableManager: 表结构保存完成，结果: {}", success ? "成功" : "失败");
     return success;
 }
 
@@ -195,20 +203,26 @@ TableManager::TableManager(BufferPoolManager *bpm): buffer_pool_manager_(bpm) {
     LoadRootDirectory();
     logger_->Info("TableManager: 根目录加载完成");
     
-    // 暂时注释掉LoadAllTableSchemas，避免循环依赖
-    // logger_->Info("TableManager: 加载所有表结构...");
-    // LoadAllTableSchemas();
+    // 加载所有表结构到内存
+    logger_->Info("TableManager: 加载所有表结构...");
+    LoadAllTableSchemas();
     logger_->Info("TableManager: 初始化完成");
 }
 
 TableManager::~TableManager() {
     // 保存所有表结构到磁盘
-    SaveAllTableSchemas();
+    logger_->Info("TableManager: 开始保存所有表结构...");
+    bool schema_saved = SaveAllTableSchemas();
+    logger_->Info("TableManager: 表结构保存结果: {}", schema_saved ? "成功" : "失败");
+    
     // 保存根目录
-    SaveRootDirectory();
+    logger_->Info("TableManager: 开始保存根目录...");
+    bool root_saved = SaveRootDirectory();
+    logger_->Info("TableManager: 根目录保存结果: {}", root_saved ? "成功" : "失败");
     
     // 删除表结构管理器
     delete schema_manager_;
+    logger_->Info("TableManager: 析构完成");
 }
 
 // ========= 表管理 ===========

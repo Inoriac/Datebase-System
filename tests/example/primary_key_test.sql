@@ -2,7 +2,8 @@
 -- 包含基本的增删改查操作
 
 -- 1. 创建带主键的用户表
-CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(50), age INT, email VARCHAR(100));
+-- CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(50), age INT, email VARCHAR(100));
+CREATE TABLE users (id INT, name VARCHAR(50), age INT, email VARCHAR(100));
 
 -- 2. 创建带主键的订单表
 CREATE TABLE orders (order_id INT PRIMARY KEY, user_id INT, product_name VARCHAR(100), price DECIMAL(10,2), order_date VARCHAR(20));

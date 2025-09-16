@@ -84,14 +84,21 @@ private:
 class FilterOperator : public Operator
 {
 public:
-    FilterOperator(std::unique_ptr<Operator> &&child_op, ASTNode *condition)
-        : condition(condition)
+    FilterOperator(std::unique_ptr<Operator> &&child_op, ASTNode *condition, TableManager* table_manager)
+        : condition(condition), table_manager_(table_manager)
     {
         type = FILTER_OP;
         child = std::move(child_op);
+        current_row_index = 0;
     }
     std::unique_ptr<Tuple> next() override;
     ASTNode *condition;
+    
+private:
+    bool evaluateCondition(const Tuple& tuple, ASTNode* condition);
+    TableManager* table_manager_;
+    std::vector<Tuple> all_records_;
+    size_t current_row_index;
 };
 
 // 投影（Project）算子
