@@ -72,9 +72,14 @@
 #include <iostream>
 #include <string>
 #include "ast.h" // 包含 AST 节点定义
+#include "suggestion.h" // 包含智能纠错建议函数
 
 // 声明由 Flex 生成的词法分析函数
 extern int yylex(); 
+extern FILE* yyin;
+
+// 声明从 Flex 共享的全局变量
+extern char* last_identifier_text;
 
 void yyerror(const char* s); 
 void yyerror(Location* locp, const char* s);
@@ -84,10 +89,13 @@ extern int yylineno;
 // 存储最终AST的根节点
 ASTNode* ast_root = nullptr;
 
+// 存储当前解析状态
+ParserState current_parser_state = STATE_EXPECTING_COMMAND;
+
 #define YYLTYPE Location
 
 
-#line 91 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 99 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -130,42 +138,67 @@ enum yysymbol_kind_t
   YYSYMBOL_K_FROM = 12,                    /* K_FROM  */
   YYSYMBOL_K_WHERE = 13,                   /* K_WHERE  */
   YYSYMBOL_K_DELETE = 14,                  /* K_DELETE  */
-  YYSYMBOL_K_INT = 15,                     /* K_INT  */
-  YYSYMBOL_K_VARCHAR = 16,                 /* K_VARCHAR  */
-  YYSYMBOL_OP_EQ = 17,                     /* OP_EQ  */
-  YYSYMBOL_OP_LT = 18,                     /* OP_LT  */
-  YYSYMBOL_OP_GT = 19,                     /* OP_GT  */
-  YYSYMBOL_OP_LTE = 20,                    /* OP_LTE  */
-  YYSYMBOL_OP_GTE = 21,                    /* OP_GTE  */
-  YYSYMBOL_OP_NEQ = 22,                    /* OP_NEQ  */
-  YYSYMBOL_23_ = 23,                       /* ';'  */
-  YYSYMBOL_24_ = 24,                       /* '('  */
-  YYSYMBOL_25_ = 25,                       /* ')'  */
-  YYSYMBOL_26_ = 26,                       /* ','  */
-  YYSYMBOL_27_ = 27,                       /* '*'  */
-  YYSYMBOL_YYACCEPT = 28,                  /* $accept  */
-  YYSYMBOL_program = 29,                   /* program  */
-  YYSYMBOL_statements = 30,                /* statements  */
-  YYSYMBOL_statement = 31,                 /* statement  */
-  YYSYMBOL_create_statement = 32,          /* create_statement  */
-  YYSYMBOL_column_definitions = 33,        /* column_definitions  */
-  YYSYMBOL_column_definition = 34,         /* column_definition  */
-  YYSYMBOL_data_type = 35,                 /* data_type  */
-  YYSYMBOL_optional_varchar_length = 36,   /* optional_varchar_length  */
-  YYSYMBOL_select_statement = 37,          /* select_statement  */
-  YYSYMBOL_select_list = 38,               /* select_list  */
-  YYSYMBOL_column_list = 39,               /* column_list  */
-  YYSYMBOL_column_name = 40,               /* column_name  */
-  YYSYMBOL_optional_where_clause = 41,     /* optional_where_clause  */
-  YYSYMBOL_where_clause = 42,              /* where_clause  */
-  YYSYMBOL_insert_statement = 43,          /* insert_statement  */
-  YYSYMBOL_optional_column_list = 44,      /* optional_column_list  */
-  YYSYMBOL_value_list = 45,                /* value_list  */
-  YYSYMBOL_value = 46,                     /* value  */
-  YYSYMBOL_delete_statement = 47,          /* delete_statement  */
-  YYSYMBOL_expression = 48,                /* expression  */
-  YYSYMBOL_comparison_operator = 49,       /* comparison_operator  */
-  YYSYMBOL_literal = 50                    /* literal  */
+  YYSYMBOL_K_UPDATE = 15,                  /* K_UPDATE  */
+  YYSYMBOL_K_SET = 16,                     /* K_SET  */
+  YYSYMBOL_K_INT = 17,                     /* K_INT  */
+  YYSYMBOL_K_VARCHAR = 18,                 /* K_VARCHAR  */
+  YYSYMBOL_K_JOIN = 19,                    /* K_JOIN  */
+  YYSYMBOL_K_ON = 20,                      /* K_ON  */
+  YYSYMBOL_K_GROUP = 21,                   /* K_GROUP  */
+  YYSYMBOL_K_BY = 22,                      /* K_BY  */
+  YYSYMBOL_K_ORDER = 23,                   /* K_ORDER  */
+  YYSYMBOL_OP_EQ = 24,                     /* OP_EQ  */
+  YYSYMBOL_OP_LT = 25,                     /* OP_LT  */
+  YYSYMBOL_OP_GT = 26,                     /* OP_GT  */
+  YYSYMBOL_OP_LTE = 27,                    /* OP_LTE  */
+  YYSYMBOL_OP_GTE = 28,                    /* OP_GTE  */
+  YYSYMBOL_OP_NEQ = 29,                    /* OP_NEQ  */
+  YYSYMBOL_30_ = 30,                       /* ';'  */
+  YYSYMBOL_31_ = 31,                       /* ','  */
+  YYSYMBOL_32_ = 32,                       /* '('  */
+  YYSYMBOL_33_ = 33,                       /* ')'  */
+  YYSYMBOL_34_ = 34,                       /* '*'  */
+  YYSYMBOL_35_ = 35,                       /* '.'  */
+  YYSYMBOL_YYACCEPT = 36,                  /* $accept  */
+  YYSYMBOL_program = 37,                   /* program  */
+  YYSYMBOL_statements = 38,                /* statements  */
+  YYSYMBOL_statement = 39,                 /* statement  */
+  YYSYMBOL_update_statement = 40,          /* update_statement  */
+  YYSYMBOL_set_clause = 41,                /* set_clause  */
+  YYSYMBOL_set_list = 42,                  /* set_list  */
+  YYSYMBOL_assignment = 43,                /* assignment  */
+  YYSYMBOL_create_statement = 44,          /* create_statement  */
+  YYSYMBOL_45_1 = 45,                      /* $@1  */
+  YYSYMBOL_column_definitions = 46,        /* column_definitions  */
+  YYSYMBOL_column_definition = 47,         /* column_definition  */
+  YYSYMBOL_48_2 = 48,                      /* $@2  */
+  YYSYMBOL_data_type = 49,                 /* data_type  */
+  YYSYMBOL_optional_varchar_length = 50,   /* optional_varchar_length  */
+  YYSYMBOL_select_statement = 51,          /* select_statement  */
+  YYSYMBOL_52_3 = 52,                      /* $@3  */
+  YYSYMBOL_from_clause = 53,               /* from_clause  */
+  YYSYMBOL_54_4 = 54,                      /* $@4  */
+  YYSYMBOL_join_clause = 55,               /* join_clause  */
+  YYSYMBOL_optional_group_by_clause = 56,  /* optional_group_by_clause  */
+  YYSYMBOL_group_by_clause = 57,           /* group_by_clause  */
+  YYSYMBOL_optional_order_by_clause = 58,  /* optional_order_by_clause  */
+  YYSYMBOL_order_by_clause = 59,           /* order_by_clause  */
+  YYSYMBOL_select_list = 60,               /* select_list  */
+  YYSYMBOL_column_list = 61,               /* column_list  */
+  YYSYMBOL_column_name = 62,               /* column_name  */
+  YYSYMBOL_optional_where_clause = 63,     /* optional_where_clause  */
+  YYSYMBOL_where_clause = 64,              /* where_clause  */
+  YYSYMBOL_insert_statement = 65,          /* insert_statement  */
+  YYSYMBOL_66_5 = 66,                      /* $@5  */
+  YYSYMBOL_67_6 = 67,                      /* $@6  */
+  YYSYMBOL_optional_column_list = 68,      /* optional_column_list  */
+  YYSYMBOL_value_list = 69,                /* value_list  */
+  YYSYMBOL_value = 70,                     /* value  */
+  YYSYMBOL_delete_statement = 71,          /* delete_statement  */
+  YYSYMBOL_expression = 72,                /* expression  */
+  YYSYMBOL_column_ref = 73,                /* column_ref  */
+  YYSYMBOL_comparison_operator = 74,       /* comparison_operator  */
+  YYSYMBOL_literal = 75                    /* literal  */
 };
 typedef enum yysymbol_kind_t yysymbol_kind_t;
 
@@ -363,7 +396,7 @@ typedef int yy_state_fast_t;
 
 #define YY_ASSERT(E) ((void) (0 && (E)))
 
-#if !defined yyoverflow
+#if 1
 
 /* The parser invokes alloca or malloc; define the necessary symbols.  */
 
@@ -428,7 +461,7 @@ void free (void *); /* INFRINGES ON USER NAME SPACE */
 #   endif
 #  endif
 # endif
-#endif /* !defined yyoverflow */
+#endif /* 1 */
 
 #if (! defined yyoverflow \
      && (! defined __cplusplus \
@@ -494,21 +527,21 @@ union yyalloc
 #endif /* !YYCOPY_NEEDED */
 
 /* YYFINAL -- State number of the termination state.  */
-#define YYFINAL  22
+#define YYFINAL  25
 /* YYLAST -- Last index in YYTABLE.  */
-#define YYLAST   61
+#define YYLAST   100
 
 /* YYNTOKENS -- Number of terminals.  */
-#define YYNTOKENS  28
+#define YYNTOKENS  36
 /* YYNNTS -- Number of nonterminals.  */
-#define YYNNTS  23
+#define YYNNTS  40
 /* YYNRULES -- Number of rules.  */
-#define YYNRULES  42
+#define YYNRULES  67
 /* YYNSTATES -- Number of states.  */
-#define YYNSTATES  77
+#define YYNSTATES  119
 
 /* YYMAXUTOK -- Last valid token kind.  */
-#define YYMAXUTOK   277
+#define YYMAXUTOK   284
 
 
 /* YYTRANSLATE(TOKEN-NUM) -- Symbol number corresponding to TOKEN-NUM
@@ -526,8 +559,8 @@ static const yytype_int8 yytranslate[] =
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-      24,    25,    27,     2,    26,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,    23,
+      32,    33,    34,     2,    31,     2,    35,     2,     2,     2,
+       2,     2,     2,     2,     2,     2,     2,     2,     2,    30,
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
@@ -549,25 +582,28 @@ static const yytype_int8 yytranslate[] =
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     1,     2,     3,     4,
        5,     6,     7,     8,     9,    10,    11,    12,    13,    14,
-      15,    16,    17,    18,    19,    20,    21,    22
+      15,    16,    17,    18,    19,    20,    21,    22,    23,    24,
+      25,    26,    27,    28,    29
 };
 
 #if YYDEBUG
 /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_int16 yyrline[] =
 {
-       0,    75,    75,    84,    89,    98,    99,   100,   101,   102,
-     109,   122,   126,   133,   141,   144,   153,   154,   164,   174,
-     178,   191,   195,   202,   209,   210,   214,   224,   242,   243,
-     247,   251,   258,   264,   279,   288,   289,   290,   291,   292,
-     293,   297,   300
+       0,    95,    95,   104,   109,   117,   118,   119,   120,   121,
+     122,   129,   140,   147,   152,   160,   174,   174,   188,   193,
+     201,   201,   211,   214,   223,   224,   234,   234,   250,   250,
+     263,   264,   279,   280,   284,   296,   297,   301,   313,   318,
+     331,   335,   342,   346,   355,   356,   360,   370,   371,   370,
+     390,   391,   395,   399,   406,   412,   426,   432,   441,   445,
+     454,   455,   456,   457,   458,   459,   463,   466
 };
 #endif
 
 /** Accessing symbol of state STATE.  */
 #define YY_ACCESSING_SYMBOL(State) YY_CAST (yysymbol_kind_t, yystos[State])
 
-#if YYDEBUG || 0
+#if 1
 /* The user-facing name of the symbol whose (internal) number is
    YYSYMBOL.  No bounds checking.  */
 static const char *yysymbol_name (yysymbol_kind_t yysymbol) YY_ATTRIBUTE_UNUSED;
@@ -579,14 +615,19 @@ static const char *const yytname[] =
   "\"end of file\"", "error", "\"invalid token\"", "IDENTIFIER",
   "STRING_CONST", "INTEGER_CONST", "K_CREATE", "K_TABLE", "K_INSERT",
   "K_INTO", "K_VALUES", "K_SELECT", "K_FROM", "K_WHERE", "K_DELETE",
-  "K_INT", "K_VARCHAR", "OP_EQ", "OP_LT", "OP_GT", "OP_LTE", "OP_GTE",
-  "OP_NEQ", "';'", "'('", "')'", "','", "'*'", "$accept", "program",
-  "statements", "statement", "create_statement", "column_definitions",
-  "column_definition", "data_type", "optional_varchar_length",
-  "select_statement", "select_list", "column_list", "column_name",
-  "optional_where_clause", "where_clause", "insert_statement",
-  "optional_column_list", "value_list", "value", "delete_statement",
-  "expression", "comparison_operator", "literal", YY_NULLPTR
+  "K_UPDATE", "K_SET", "K_INT", "K_VARCHAR", "K_JOIN", "K_ON", "K_GROUP",
+  "K_BY", "K_ORDER", "OP_EQ", "OP_LT", "OP_GT", "OP_LTE", "OP_GTE",
+  "OP_NEQ", "';'", "','", "'('", "')'", "'*'", "'.'", "$accept", "program",
+  "statements", "statement", "update_statement", "set_clause", "set_list",
+  "assignment", "create_statement", "$@1", "column_definitions",
+  "column_definition", "$@2", "data_type", "optional_varchar_length",
+  "select_statement", "$@3", "from_clause", "$@4", "join_clause",
+  "optional_group_by_clause", "group_by_clause",
+  "optional_order_by_clause", "order_by_clause", "select_list",
+  "column_list", "column_name", "optional_where_clause", "where_clause",
+  "insert_statement", "$@5", "$@6", "optional_column_list", "value_list",
+  "value", "delete_statement", "expression", "column_ref",
+  "comparison_operator", "literal", YY_NULLPTR
 };
 
 static const char *
@@ -596,7 +637,7 @@ yysymbol_name (yysymbol_kind_t yysymbol)
 }
 #endif
 
-#define YYPACT_NINF (-18)
+#define YYPACT_NINF (-60)
 
 #define yypact_value_is_default(Yyn) \
   ((Yyn) == YYPACT_NINF)
@@ -610,14 +651,18 @@ yysymbol_name (yysymbol_kind_t yysymbol)
    STATE-NUM.  */
 static const yytype_int8 yypact[] =
 {
-       2,   -17,     4,    14,    -3,    15,    34,     1,   -18,    -9,
-      12,    13,    16,   -18,    35,    37,   -18,   -18,    25,    17,
-     -18,    38,   -18,   -18,   -18,   -18,   -18,   -18,    18,    20,
-      42,    43,    36,    44,    43,    40,    36,   -18,    45,   -18,
-     -18,   -11,     3,   -18,     5,    27,   -18,     0,   -18,   -18,
-      28,   -18,   -18,    44,   -18,    21,   -18,   -18,   -18,   -18,
-     -18,   -18,    21,    48,   -18,   -18,   -18,   -18,     7,   -18,
-     -18,   -18,    29,   -18,    21,   -18,   -18
+      15,   -23,   -60,   -60,    -2,     0,    16,    25,     3,   -60,
+       1,     6,    17,    18,    19,   -60,    39,    41,    20,   -60,
+     -60,    21,   -60,    50,    38,   -60,   -60,   -60,   -60,   -60,
+     -60,   -60,    53,    54,    55,    47,    57,    48,    59,    48,
+      31,    32,   -60,   -60,    48,   -60,    62,   -60,   -60,    42,
+      36,   -60,   -60,    65,    57,   -60,    66,    49,    37,   -60,
+      14,    23,    59,   -60,   -25,   -60,   -18,    61,    56,    51,
+      58,   -60,    71,   -60,   -60,   -60,   -60,   -60,   -60,    30,
+     -60,   -60,   -60,   -60,    27,    65,   -60,   -60,    44,    74,
+     -60,    57,    60,   -60,   -60,   -60,   -60,   -60,   -60,    46,
+     -60,   -60,    23,    63,    21,    57,    75,   -60,    -9,   -60,
+     -60,    62,    21,    52,    23,   -60,   -60,   -60,   -60
 };
 
 /* YYDEFACT[STATE-NUM] -- Default reduction number in state STATE-NUM.
@@ -625,30 +670,36 @@ static const yytype_int8 yypact[] =
    means the default is an error.  */
 static const yytype_int8 yydefact[] =
 {
-       0,     0,     0,     0,     0,     0,     0,     0,     3,     0,
-       0,     0,     0,     9,     0,     0,    23,    19,     0,    20,
-      21,     0,     1,     4,     5,     7,     6,     8,     0,    28,
-       0,     0,    24,     0,     0,     0,    24,    22,     0,    33,
-      25,     0,     0,    11,     0,     0,    18,     0,    26,    14,
-      16,    13,    10,     0,    29,     0,    35,    39,    37,    40,
-      38,    36,     0,     0,    15,    12,    42,    41,     0,    30,
-      32,    34,     0,    27,     0,    17,    31
+       0,     0,    16,    47,     0,     0,     0,     0,     0,     3,
+       0,     0,     0,     0,     0,    10,     0,     0,    42,    38,
+      26,    39,    40,     0,     0,     1,     4,     9,     5,     7,
+       6,     8,     0,     0,     0,     0,     0,    44,     0,    44,
+       0,    50,    43,    28,    44,    41,     0,    55,    45,     0,
+      12,    13,    11,     0,     0,    48,     0,    32,    58,    46,
+       0,     0,     0,    20,     0,    18,     0,     0,    30,     0,
+      35,    33,     0,    60,    64,    62,    65,    63,    61,     0,
+      67,    66,    15,    14,     0,     0,    17,    51,     0,     0,
+      29,     0,     0,    27,    36,    59,    56,    57,    22,    24,
+      21,    19,     0,     0,    34,     0,     0,    23,     0,    52,
+      54,     0,    37,     0,     0,    49,    31,    25,    53
 };
 
 /* YYPGOTO[NTERM-NUM].  */
 static const yytype_int8 yypgoto[] =
 {
-     -18,   -18,   -18,    49,   -18,   -18,     6,   -18,   -18,   -18,
-     -18,    23,    24,    22,   -18,   -18,   -18,   -18,   -14,   -18,
-     -18,   -18,    -1
+     -60,   -60,   -60,    76,   -60,   -60,   -60,    24,   -60,   -60,
+     -60,    -6,   -60,   -60,   -60,   -60,   -60,   -60,   -60,   -60,
+     -60,   -60,   -60,   -60,   -60,   -54,    64,   -34,   -60,   -60,
+     -60,   -60,   -60,   -60,   -27,   -60,   -22,     9,   -60,   -59
 };
 
 /* YYDEFGOTO[NTERM-NUM].  */
 static const yytype_int8 yydefgoto[] =
 {
-       0,     6,     7,     8,     9,    42,    43,    51,    64,    10,
-      18,    19,    20,    39,    40,    11,    35,    68,    69,    12,
-      48,    62,    70
+       0,     7,     8,     9,    10,    39,    50,    51,    11,    16,
+      64,    65,    84,   100,   107,    12,    35,    44,    56,    90,
+      70,    71,    93,    94,    20,    21,    22,    47,    48,    13,
+      17,    67,    55,   108,   109,    14,    59,    60,    79,   110
 };
 
 /* YYTABLE[YYPACT[STATE-NUM]] -- What to do in state STATE-NUM.  If
@@ -656,58 +707,74 @@ static const yytype_int8 yydefgoto[] =
    number is the opposite.  If YYTABLE_NINF, syntax error.  */
 static const yytype_int8 yytable[] =
 {
-      16,    -2,     1,     1,    49,    50,    13,     2,     2,     3,
-       3,    14,     4,     4,    24,     5,     5,    56,    57,    58,
-      59,    60,    61,    15,    17,    66,    67,    21,    52,    53,
-      54,    31,    73,    74,    22,    25,    26,    30,    28,    27,
-      29,    32,    33,    31,    34,    36,    16,    41,    47,    38,
-      45,    55,    63,    72,    75,    37,    23,    44,    46,    65,
-      76,    71
+      66,    18,    82,    -2,     1,    52,    85,    15,    86,     2,
+      57,     3,    23,    36,     4,    87,     1,     5,     6,    24,
+      97,     2,   114,     3,   115,    25,     4,    80,    81,     5,
+       6,    27,    19,    58,    80,    81,    28,   104,    73,    74,
+      75,    76,    77,    78,    98,    99,    32,    29,    30,    31,
+      33,   112,    36,    37,    38,    34,    40,    41,    42,    43,
+      18,    46,    49,    53,    54,    58,    61,    62,    63,    68,
+      69,    88,    72,    91,    95,    89,   102,   103,   106,   101,
+     113,    92,   105,   111,    26,   117,    83,   118,    96,   116,
+       0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+      45
 };
 
 static const yytype_int8 yycheck[] =
 {
-       3,     0,     1,     1,    15,    16,    23,     6,     6,     8,
-       8,     7,    11,    11,    23,    14,    14,    17,    18,    19,
-      20,    21,    22,     9,    27,     4,     5,    12,    25,    26,
-      25,    26,    25,    26,     0,    23,    23,    12,     3,    23,
-       3,     3,    24,    26,    24,     3,     3,     3,     3,    13,
-      10,    24,    24,     5,    25,    31,     7,    34,    36,    53,
-      74,    62
+      54,     3,    61,     0,     1,    39,    31,    30,    33,     6,
+      44,     8,    12,    31,    11,    33,     1,    14,    15,     3,
+      79,     6,    31,     8,    33,     0,    11,     4,     5,    14,
+      15,    30,    34,     3,     4,     5,    30,    91,    24,    25,
+      26,    27,    28,    29,    17,    18,     7,    30,    30,    30,
+       9,   105,    31,     3,    16,    35,     3,     3,     3,    12,
+       3,    13,     3,    32,    32,     3,    24,    31,     3,     3,
+      21,    10,    35,    22,     3,    19,    32,     3,    32,    85,
+       5,    23,    22,    20,     8,    33,    62,   114,    79,   111,
+      -1,    -1,    -1,    -1,    -1,    -1,    -1,    -1,    -1,    -1,
+      36
 };
 
 /* YYSTOS[STATE-NUM] -- The symbol kind of the accessing symbol of
    state STATE-NUM.  */
 static const yytype_int8 yystos[] =
 {
-       0,     1,     6,     8,    11,    14,    29,    30,    31,    32,
-      37,    43,    47,    23,     7,     9,     3,    27,    38,    39,
-      40,    12,     0,    31,    23,    23,    23,    23,     3,     3,
-      12,    26,     3,    24,    24,    44,     3,    40,    13,    41,
-      42,     3,    33,    34,    39,    10,    41,     3,    48,    15,
-      16,    35,    25,    26,    25,    24,    17,    18,    19,    20,
-      21,    22,    49,    24,    36,    34,     4,     5,    45,    46,
-      50,    50,     5,    25,    26,    25,    46
+       0,     1,     6,     8,    11,    14,    15,    37,    38,    39,
+      40,    44,    51,    65,    71,    30,    45,    66,     3,    34,
+      60,    61,    62,    12,     3,     0,    39,    30,    30,    30,
+      30,    30,     7,     9,    35,    52,    31,     3,    16,    41,
+       3,     3,     3,    12,    53,    62,    13,    63,    64,     3,
+      42,    43,    63,    32,    32,    68,    54,    63,     3,    72,
+      73,    24,    31,     3,    46,    47,    61,    67,     3,    21,
+      56,    57,    35,    24,    25,    26,    27,    28,    29,    74,
+       4,     5,    75,    43,    48,    31,    33,    33,    10,    19,
+      55,    22,    23,    58,    59,     3,    73,    75,    17,    18,
+      49,    47,    32,     3,    61,    22,    32,    50,    69,    70,
+      75,    20,    61,     5,    31,    33,    72,    33,    70
 };
 
 /* YYR1[RULE-NUM] -- Symbol kind of the left-hand side of rule RULE-NUM.  */
 static const yytype_int8 yyr1[] =
 {
-       0,    28,    29,    30,    30,    31,    31,    31,    31,    31,
-      32,    33,    33,    34,    35,    35,    36,    36,    37,    38,
-      38,    39,    39,    40,    41,    41,    42,    43,    44,    44,
-      45,    45,    46,    47,    48,    49,    49,    49,    49,    49,
-      49,    50,    50
+       0,    36,    37,    38,    38,    39,    39,    39,    39,    39,
+      39,    40,    41,    42,    42,    43,    45,    44,    46,    46,
+      48,    47,    49,    49,    50,    50,    52,    51,    54,    53,
+      55,    55,    56,    56,    57,    58,    58,    59,    60,    60,
+      61,    61,    62,    62,    63,    63,    64,    66,    67,    65,
+      68,    68,    69,    69,    70,    71,    72,    72,    73,    73,
+      74,    74,    74,    74,    74,    74,    75,    75
 };
 
 /* YYR2[RULE-NUM] -- Number of symbols on the right-hand side of rule RULE-NUM.  */
 static const yytype_int8 yyr2[] =
 {
        0,     2,     1,     1,     2,     2,     2,     2,     2,     2,
-       6,     1,     3,     2,     1,     2,     0,     3,     5,     1,
-       1,     1,     3,     1,     0,     1,     2,     8,     0,     3,
-       1,     3,     1,     4,     3,     1,     1,     1,     1,     1,
-       1,     1,     1
+       2,     4,     2,     1,     3,     3,     0,     7,     1,     3,
+       0,     3,     1,     2,     0,     3,     0,     7,     0,     4,
+       0,     4,     0,     1,     3,     0,     1,     3,     1,     1,
+       1,     3,     1,     3,     0,     1,     2,     0,     0,    10,
+       0,     3,     1,     3,     1,     4,     3,     3,     1,     3,
+       1,     1,     1,     1,     1,     1,     1,     1
 };
 
 
@@ -977,8 +1044,276 @@ int yydebug;
 #endif
 
 
+/* Context of a parse error.  */
+typedef struct
+{
+  yy_state_t *yyssp;
+  yysymbol_kind_t yytoken;
+  YYLTYPE *yylloc;
+} yypcontext_t;
+
+/* Put in YYARG at most YYARGN of the expected tokens given the
+   current YYCTX, and return the number of tokens stored in YYARG.  If
+   YYARG is null, return the number of expected tokens (guaranteed to
+   be less than YYNTOKENS).  Return YYENOMEM on memory exhaustion.
+   Return 0 if there are more than YYARGN expected tokens, yet fill
+   YYARG up to YYARGN. */
+static int
+yypcontext_expected_tokens (const yypcontext_t *yyctx,
+                            yysymbol_kind_t yyarg[], int yyargn)
+{
+  /* Actual size of YYARG. */
+  int yycount = 0;
+  int yyn = yypact[+*yyctx->yyssp];
+  if (!yypact_value_is_default (yyn))
+    {
+      /* Start YYX at -YYN if negative to avoid negative indexes in
+         YYCHECK.  In other words, skip the first -YYN actions for
+         this state because they are default actions.  */
+      int yyxbegin = yyn < 0 ? -yyn : 0;
+      /* Stay within bounds of both yycheck and yytname.  */
+      int yychecklim = YYLAST - yyn + 1;
+      int yyxend = yychecklim < YYNTOKENS ? yychecklim : YYNTOKENS;
+      int yyx;
+      for (yyx = yyxbegin; yyx < yyxend; ++yyx)
+        if (yycheck[yyx + yyn] == yyx && yyx != YYSYMBOL_YYerror
+            && !yytable_value_is_error (yytable[yyx + yyn]))
+          {
+            if (!yyarg)
+              ++yycount;
+            else if (yycount == yyargn)
+              return 0;
+            else
+              yyarg[yycount++] = YY_CAST (yysymbol_kind_t, yyx);
+          }
+    }
+  if (yyarg && yycount == 0 && 0 < yyargn)
+    yyarg[0] = YYSYMBOL_YYEMPTY;
+  return yycount;
+}
 
 
+
+
+#ifndef yystrlen
+# if defined __GLIBC__ && defined _STRING_H
+#  define yystrlen(S) (YY_CAST (YYPTRDIFF_T, strlen (S)))
+# else
+/* Return the length of YYSTR.  */
+static YYPTRDIFF_T
+yystrlen (const char *yystr)
+{
+  YYPTRDIFF_T yylen;
+  for (yylen = 0; yystr[yylen]; yylen++)
+    continue;
+  return yylen;
+}
+# endif
+#endif
+
+#ifndef yystpcpy
+# if defined __GLIBC__ && defined _STRING_H && defined _GNU_SOURCE
+#  define yystpcpy stpcpy
+# else
+/* Copy YYSRC to YYDEST, returning the address of the terminating '\0' in
+   YYDEST.  */
+static char *
+yystpcpy (char *yydest, const char *yysrc)
+{
+  char *yyd = yydest;
+  const char *yys = yysrc;
+
+  while ((*yyd++ = *yys++) != '\0')
+    continue;
+
+  return yyd - 1;
+}
+# endif
+#endif
+
+#ifndef yytnamerr
+/* Copy to YYRES the contents of YYSTR after stripping away unnecessary
+   quotes and backslashes, so that it's suitable for yyerror.  The
+   heuristic is that double-quoting is unnecessary unless the string
+   contains an apostrophe, a comma, or backslash (other than
+   backslash-backslash).  YYSTR is taken from yytname.  If YYRES is
+   null, do not copy; instead, return the length of what the result
+   would have been.  */
+static YYPTRDIFF_T
+yytnamerr (char *yyres, const char *yystr)
+{
+  if (*yystr == '"')
+    {
+      YYPTRDIFF_T yyn = 0;
+      char const *yyp = yystr;
+      for (;;)
+        switch (*++yyp)
+          {
+          case '\'':
+          case ',':
+            goto do_not_strip_quotes;
+
+          case '\\':
+            if (*++yyp != '\\')
+              goto do_not_strip_quotes;
+            else
+              goto append;
+
+          append:
+          default:
+            if (yyres)
+              yyres[yyn] = *yyp;
+            yyn++;
+            break;
+
+          case '"':
+            if (yyres)
+              yyres[yyn] = '\0';
+            return yyn;
+          }
+    do_not_strip_quotes: ;
+    }
+
+  if (yyres)
+    return yystpcpy (yyres, yystr) - yyres;
+  else
+    return yystrlen (yystr);
+}
+#endif
+
+
+static int
+yy_syntax_error_arguments (const yypcontext_t *yyctx,
+                           yysymbol_kind_t yyarg[], int yyargn)
+{
+  /* Actual size of YYARG. */
+  int yycount = 0;
+  /* There are many possibilities here to consider:
+     - If this state is a consistent state with a default action, then
+       the only way this function was invoked is if the default action
+       is an error action.  In that case, don't check for expected
+       tokens because there are none.
+     - The only way there can be no lookahead present (in yychar) is if
+       this state is a consistent state with a default action.  Thus,
+       detecting the absence of a lookahead is sufficient to determine
+       that there is no unexpected or expected token to report.  In that
+       case, just report a simple "syntax error".
+     - Don't assume there isn't a lookahead just because this state is a
+       consistent state with a default action.  There might have been a
+       previous inconsistent state, consistent state with a non-default
+       action, or user semantic action that manipulated yychar.
+     - Of course, the expected token list depends on states to have
+       correct lookahead information, and it depends on the parser not
+       to perform extra reductions after fetching a lookahead from the
+       scanner and before detecting a syntax error.  Thus, state merging
+       (from LALR or IELR) and default reductions corrupt the expected
+       token list.  However, the list is correct for canonical LR with
+       one exception: it will still contain any token that will not be
+       accepted due to an error action in a later state.
+  */
+  if (yyctx->yytoken != YYSYMBOL_YYEMPTY)
+    {
+      int yyn;
+      if (yyarg)
+        yyarg[yycount] = yyctx->yytoken;
+      ++yycount;
+      yyn = yypcontext_expected_tokens (yyctx,
+                                        yyarg ? yyarg + 1 : yyarg, yyargn - 1);
+      if (yyn == YYENOMEM)
+        return YYENOMEM;
+      else
+        yycount += yyn;
+    }
+  return yycount;
+}
+
+/* Copy into *YYMSG, which is of size *YYMSG_ALLOC, an error message
+   about the unexpected token YYTOKEN for the state stack whose top is
+   YYSSP.
+
+   Return 0 if *YYMSG was successfully written.  Return -1 if *YYMSG is
+   not large enough to hold the message.  In that case, also set
+   *YYMSG_ALLOC to the required number of bytes.  Return YYENOMEM if the
+   required number of bytes is too large to store.  */
+static int
+yysyntax_error (YYPTRDIFF_T *yymsg_alloc, char **yymsg,
+                const yypcontext_t *yyctx)
+{
+  enum { YYARGS_MAX = 5 };
+  /* Internationalized format string. */
+  const char *yyformat = YY_NULLPTR;
+  /* Arguments of yyformat: reported tokens (one for the "unexpected",
+     one per "expected"). */
+  yysymbol_kind_t yyarg[YYARGS_MAX];
+  /* Cumulated lengths of YYARG.  */
+  YYPTRDIFF_T yysize = 0;
+
+  /* Actual size of YYARG. */
+  int yycount = yy_syntax_error_arguments (yyctx, yyarg, YYARGS_MAX);
+  if (yycount == YYENOMEM)
+    return YYENOMEM;
+
+  switch (yycount)
+    {
+#define YYCASE_(N, S)                       \
+      case N:                               \
+        yyformat = S;                       \
+        break
+    default: /* Avoid compiler warnings. */
+      YYCASE_(0, YY_("syntax error"));
+      YYCASE_(1, YY_("syntax error, unexpected %s"));
+      YYCASE_(2, YY_("syntax error, unexpected %s, expecting %s"));
+      YYCASE_(3, YY_("syntax error, unexpected %s, expecting %s or %s"));
+      YYCASE_(4, YY_("syntax error, unexpected %s, expecting %s or %s or %s"));
+      YYCASE_(5, YY_("syntax error, unexpected %s, expecting %s or %s or %s or %s"));
+#undef YYCASE_
+    }
+
+  /* Compute error message size.  Don't count the "%s"s, but reserve
+     room for the terminator.  */
+  yysize = yystrlen (yyformat) - 2 * yycount + 1;
+  {
+    int yyi;
+    for (yyi = 0; yyi < yycount; ++yyi)
+      {
+        YYPTRDIFF_T yysize1
+          = yysize + yytnamerr (YY_NULLPTR, yytname[yyarg[yyi]]);
+        if (yysize <= yysize1 && yysize1 <= YYSTACK_ALLOC_MAXIMUM)
+          yysize = yysize1;
+        else
+          return YYENOMEM;
+      }
+  }
+
+  if (*yymsg_alloc < yysize)
+    {
+      *yymsg_alloc = 2 * yysize;
+      if (! (yysize <= *yymsg_alloc
+             && *yymsg_alloc <= YYSTACK_ALLOC_MAXIMUM))
+        *yymsg_alloc = YYSTACK_ALLOC_MAXIMUM;
+      return -1;
+    }
+
+  /* Avoid sprintf, as that infringes on the user's name space.
+     Don't have undefined behavior even if the translation
+     produced a string with the wrong number of "%s"s.  */
+  {
+    char *yyp = *yymsg;
+    int yyi = 0;
+    while ((*yyp = *yyformat) != '\0')
+      if (*yyp == '%' && yyformat[1] == 's' && yyi < yycount)
+        {
+          yyp += yytnamerr (yyp, yytname[yyarg[yyi++]]);
+          yyformat += 2;
+        }
+      else
+        {
+          ++yyp;
+          ++yyformat;
+        }
+  }
+  return 0;
+}
 
 
 /*-----------------------------------------------.
@@ -1063,7 +1398,10 @@ yyparse (void)
   /* The locations where the error started and ended.  */
   YYLTYPE yyerror_range[3];
 
-
+  /* Buffer for error messages, and its allocated size.  */
+  char yymsgbuf[128];
+  char *yymsg = yymsgbuf;
+  YYPTRDIFF_T yymsg_alloc = sizeof yymsgbuf;
 
 #define YYPOPSTACK(N)   (yyvsp -= (N), yyssp -= (N), yylsp -= (N))
 
@@ -1284,165 +1622,334 @@ yyreduce:
   switch (yyn)
     {
   case 2: /* program: statements  */
-#line 75 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 95 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                {
         // 当整个程序解析完成，$1是sql_statements返回的根节点
         // 将它赋值给全局变量 ast_root
         ast_root = (yyvsp[0].node);
         std::cout << "[Parser] SQL parsing complete. AST root is set." << std::endl;
     }
-#line 1295 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1633 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
   case 3: /* statements: statement  */
-#line 84 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 104 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
               {
         // 只有一个语句，创建一个列表节点，并把该语句作为子节点
         (yyval.node) = new ASTNode(ROOT_NODE, "", (yyloc));
-        (yyval.node)->addChild((yyvsp[0].node));
+        if ((yyvsp[0].node)) (yyval.node)->addChild((yyvsp[0].node));   // 在根节点下添加该语句
     }
-#line 1305 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1643 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
   case 4: /* statements: statements statement  */
-#line 89 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 109 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                            {
-        // 已经有一个列表了($1)，把新的语句($2)加进去
-        (yyvsp[-1].node)->addChild((yyvsp[0].node));
+        if ((yyvsp[0].node)) (yyvsp[-1].node)->addChild((yyvsp[0].node));   // 已经有一个列表了($1)，把新的语句($2)加进去
         (yyval.node) = (yyvsp[-1].node); // 将更新后的列表向上传递
     }
-#line 1315 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1652 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
   case 5: /* statement: create_statement ';'  */
-#line 98 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-                         { (yyval.node) = (yyvsp[-1].node); }
-#line 1321 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 117 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                         { current_parser_state = STATE_EXPECTING_COMMAND; (yyval.node) = (yyvsp[-1].node); }
+#line 1658 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
   case 6: /* statement: insert_statement ';'  */
-#line 99 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-                           { (yyval.node) = (yyvsp[-1].node); }
-#line 1327 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 118 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                           { current_parser_state = STATE_EXPECTING_COMMAND; (yyval.node) = (yyvsp[-1].node); }
+#line 1664 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
   case 7: /* statement: select_statement ';'  */
-#line 100 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-                           { (yyval.node) = (yyvsp[-1].node); }
-#line 1333 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 119 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                           { current_parser_state = STATE_EXPECTING_COMMAND; (yyval.node) = (yyvsp[-1].node); }
+#line 1670 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
   case 8: /* statement: delete_statement ';'  */
-#line 101 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-                           { (yyval.node) = (yyvsp[-1].node); }
-#line 1339 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 120 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                           { current_parser_state = STATE_EXPECTING_COMMAND; (yyval.node) = (yyvsp[-1].node); }
+#line 1676 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 9: /* statement: error ';'  */
-#line 102 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-                { yyerrok; }
-#line 1345 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+  case 9: /* statement: update_statement ';'  */
+#line 121 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                           { current_parser_state = STATE_EXPECTING_COMMAND; (yyval.node) = (yyvsp[-1].node); }
+#line 1682 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 10: /* create_statement: K_CREATE K_TABLE IDENTIFIER '(' column_definitions ')'  */
-#line 109 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-                                                           {
+  case 10: /* statement: error ';'  */
+#line 122 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                           { current_parser_state = STATE_EXPECTING_COMMAND; (yyval.node) = nullptr; yyerrok; }
+#line 1688 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 11: /* update_statement: K_UPDATE IDENTIFIER set_clause optional_where_clause  */
+#line 130 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+    {
+        (yyval.node) = new ASTNode(UPDATE_STMT, "", (yyloc));
+        (yyval.node)->addChild(new ASTNode(IDENTIFIER_NODE, (yyvsp[-2].str_val), (yylsp[-2]))); // 子节点0: 表名
+        (yyval.node)->addChild((yyvsp[-1].node)); // 子节点1: SET_CLAUSE
+        (yyval.node)->addChild((yyvsp[0].node)); // 子节点2: WHERE_CLAUSE
+        free((yyvsp[-2].str_val));
+    }
+#line 1700 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 12: /* set_clause: K_SET set_list  */
+#line 141 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+    {
+        (yyval.node) = (yyvsp[0].node);
+    }
+#line 1708 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 13: /* set_list: assignment  */
+#line 148 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+    {
+        (yyval.node) = new ASTNode(SET_CLAUSE, "", (yyloc));
+        (yyval.node)->addChild((yyvsp[0].node));
+    }
+#line 1717 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 14: /* set_list: set_list ',' assignment  */
+#line 153 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+    {
+        (yyvsp[-2].node)->addChild((yyvsp[0].node));
+        (yyval.node) = (yyvsp[-2].node);
+    }
+#line 1726 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 15: /* assignment: IDENTIFIER OP_EQ literal  */
+#line 161 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+    {
+        // 创建一个 EQUAL_OPERATOR 节点来表示赋值
+        (yyval.node) = new ASTNode(EQUAL_OPERATOR, "", (yylsp[-1]));
+        (yyval.node)->addChild(new ASTNode(IDENTIFIER_NODE, (yyvsp[-2].str_val), (yylsp[-2])));
+        (yyval.node)->addChild((yyvsp[0].node));
+        free((yyvsp[-2].str_val));
+    }
+#line 1738 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 16: /* $@1: %empty  */
+#line 174 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+             { current_parser_state = STATE_EXPECTING_TABLE_AFTER_CREATE; }
+#line 1744 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 17: /* create_statement: K_CREATE $@1 K_TABLE IDENTIFIER '(' column_definitions ')'  */
+#line 175 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                                                  {
         // 创建一个 CREATE_TABLE_STMT 节点
-        (yyval.node) = new ASTNode(CREATE_TABLE_STMT, "", (yylsp[-3]));
+        (yyval.node) = new ASTNode(CREATE_TABLE_STMT, "", (yyloc));
         // 子节点1: 表名 (IDENTIFIER)
         (yyval.node)->addChild(new ASTNode(IDENTIFIER_NODE, (yyvsp[-3].str_val), (yylsp[-3])));
-        // 子节点2: 列定义列表
+        // 子节点2: 列定义列表(column_definitions)
         (yyval.node)->addChild((yyvsp[-1].node));
 
         free((yyvsp[-3].str_val)); // 释放由词法分析器中 strdup 分配的内存
     }
-#line 1360 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1759 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 11: /* column_definitions: column_definition  */
-#line 122 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 18: /* column_definitions: column_definition  */
+#line 188 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                       {
         (yyval.node) = new ASTNode(COLUMN_DEFINITIONS_LIST, "", (yyloc));
+        // 只有一个列定义(column_definition)，作为子节点添加
         (yyval.node)->addChild((yyvsp[0].node));
     }
-#line 1369 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1769 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 12: /* column_definitions: column_definitions ',' column_definition  */
-#line 126 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 19: /* column_definitions: column_definitions ',' column_definition  */
+#line 193 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                                                {
+        // 已经有一个列定义列表，把新的列定义加进去
         (yyvsp[-2].node)->addChild((yyvsp[0].node));
         (yyval.node) = (yyvsp[-2].node);
     }
-#line 1378 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1779 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 13: /* column_definition: IDENTIFIER data_type  */
-#line 133 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-                         {
-        (yyval.node) = new ASTNode(IDENTIFIER_NODE, (yyvsp[-1].str_val), (yylsp[-1]));
+  case 20: /* $@2: %empty  */
+#line 201 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+               { current_parser_state = STATE_EXPECTING_DATA_TYPE; }
+#line 1785 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 21: /* column_definition: IDENTIFIER $@2 data_type  */
+#line 202 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+              {
+        (yyval.node) = new ASTNode(IDENTIFIER_NODE, (yyvsp[-2].str_val), (yylsp[-2]));
+        // 将数据类型作为子节点添加
         (yyval.node)->addChild((yyvsp[0].node));
-        free((yyvsp[-1].str_val));
+        free((yyvsp[-2].str_val));
     }
-#line 1388 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1796 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 14: /* data_type: K_INT  */
-#line 141 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 22: /* data_type: K_INT  */
+#line 211 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
           {
         (yyval.node) = new ASTNode(DATA_TYPE_NODE, "INT", (yyloc));
     }
-#line 1396 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1804 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 15: /* data_type: K_VARCHAR optional_varchar_length  */
-#line 144 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 23: /* data_type: K_VARCHAR optional_varchar_length  */
+#line 214 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                                         {
         // 将长度信息存储在 data_type 节点的 value 中
         (yyval.node) = new ASTNode(DATA_TYPE_NODE, "VARCHAR", (yyloc));
         // 如果有长度定义 ($2 不为 nullptr)，可以将其作为子节点
         (yyval.node)->addChild((yyvsp[0].node));
     }
-#line 1407 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1815 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 16: /* optional_varchar_length: %empty  */
-#line 153 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 24: /* optional_varchar_length: %empty  */
+#line 223 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                 { (yyval.node) = nullptr; }
-#line 1413 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1821 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 17: /* optional_varchar_length: '(' INTEGER_CONST ')'  */
-#line 154 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 25: /* optional_varchar_length: '(' INTEGER_CONST ')'  */
+#line 224 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                             {
         (yyval.node) = new ASTNode(INTEGER_LITERAL_NODE, std::to_string((yyvsp[-1].int_val)), (yyloc));
     }
-#line 1421 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1829 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 18: /* select_statement: K_SELECT select_list K_FROM IDENTIFIER optional_where_clause  */
-#line 164 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-                                                                 {
+  case 26: /* $@3: %empty  */
+#line 234 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                          { current_parser_state = STATE_EXPECTING_FROM_AFTER_COLUMNS; }
+#line 1835 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 27: /* select_statement: K_SELECT select_list $@3 from_clause optional_where_clause optional_group_by_clause optional_order_by_clause  */
+#line 238 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+    {
         (yyval.node) = new ASTNode(SELECT_STMT, "", (yyloc));
+        // 子节点1: 列表 (select_list)
+        (yyval.node)->addChild((yyvsp[-5].node));
+        // 子节点2: 表名 (IDENTIFIER)
         (yyval.node)->addChild((yyvsp[-3].node));
-        (yyval.node)->addChild(new ASTNode(IDENTIFIER_NODE, (yyvsp[-1].str_val), (yylsp[-1])));
-        (yyval.node)->addChild((yyvsp[0].node));
-        free((yyvsp[-1].str_val));
+        // 子节点3: 可选的 WHERE 子句 (可能为nullptr)
+        (yyval.node)->addChild((yyvsp[-2].node));
     }
-#line 1433 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1849 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 19: /* select_list: '*'  */
-#line 174 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 28: /* $@4: %empty  */
+#line 250 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+           { current_parser_state = STATE_EXPECTING_TABLE_AFTER_FROM; }
+#line 1855 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 29: /* from_clause: K_FROM $@4 IDENTIFIER join_clause  */
+#line 253 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+    {
+        // 创建一个 FROM_CLAUSE 节点，并将表名作为其 value
+        (yyval.node) = new ASTNode(FROM_CLAUSE, (yyvsp[-1].str_val), (yyloc));
+        free((yyvsp[-1].str_val));
+        // 如果有 JOIN 子句，将其作为 FROM_CLAUSE 的子节点
+        (yyval.node)->addChild((yyvsp[0].node));
+    }
+#line 1867 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 30: /* join_clause: %empty  */
+#line 263 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                { (yyval.node) = nullptr; }
+#line 1873 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 31: /* join_clause: K_JOIN IDENTIFIER K_ON expression  */
+#line 265 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+    {
+        // 創建 JOIN_CLAUSE 節點
+        (yyval.node) = new ASTNode(JOIN_CLAUSE, "", (yylsp[-3]));
+        // 子節點0: 被連接的表
+        (yyval.node)->addChild(new ASTNode(IDENTIFIER_NODE, (yyvsp[-2].str_val), (yylsp[-2])));
+        free((yyvsp[-2].str_val));
+        // 子節點1: ON 條件
+        ASTNode* on_cond = new ASTNode(ON_CONDITION, "", (yylsp[-1]));
+        on_cond->addChild((yyvsp[0].node));
+        (yyval.node)->addChild(on_cond);
+    }
+#line 1889 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 32: /* optional_group_by_clause: %empty  */
+#line 279 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                { (yyval.node) = nullptr; }
+#line 1895 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 33: /* optional_group_by_clause: group_by_clause  */
+#line 280 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                      { (yyval.node) = (yyvsp[0].node); }
+#line 1901 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 34: /* group_by_clause: K_GROUP K_BY column_list  */
+#line 285 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+    {
+        (yyval.node) = new ASTNode(GROUP_BY_CLAUSE, "", (yyloc));
+        for (auto child : (yyvsp[0].node)->children) {
+            (yyval.node)->addChild(child);
+        }
+        (yyvsp[0].node)->children.clear(); // 避免双重释放
+        delete (yyvsp[0].node);
+    }
+#line 1914 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 35: /* optional_order_by_clause: %empty  */
+#line 296 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                { (yyval.node) = nullptr; }
+#line 1920 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 36: /* optional_order_by_clause: order_by_clause  */
+#line 297 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                      { (yyval.node) = (yyvsp[0].node); }
+#line 1926 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 37: /* order_by_clause: K_ORDER K_BY column_list  */
+#line 302 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+    {
+        (yyval.node) = new ASTNode(ORDER_BY_CLAUSE, "", (yyloc));
+        for (auto child : (yyvsp[0].node)->children) {
+            (yyval.node)->addChild(child);
+        }
+        (yyvsp[0].node)->children.clear(); // 避免双重释放
+        delete (yyvsp[0].node);
+    }
+#line 1939 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 38: /* select_list: '*'  */
+#line 313 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
         { 
         (yyval.node) = new ASTNode(SELECT_LIST, "", (yyloc));
+        // 使用一个特殊的 IDENTIFIER_NODE 来表示 '*'
         (yyval.node)->addChild(new ASTNode(IDENTIFIER_NODE, "*", (yylsp[0])));
     }
-#line 1442 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1949 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 20: /* select_list: column_list  */
-#line 178 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 39: /* select_list: column_list  */
+#line 318 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                   { 
         // 将 column_list 包装在 SELECT_LIST 节点中
         (yyval.node) = new ASTNode(SELECT_LIST, "", (yyloc));
@@ -1453,187 +1960,241 @@ yyreduce:
         (yyvsp[0].node)->children.clear(); // 防止双重释放
         delete (yyvsp[0].node);
     }
-#line 1457 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1964 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 21: /* column_list: column_name  */
-#line 191 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 40: /* column_list: column_name  */
+#line 331 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                 {
         (yyval.node) = new ASTNode(COLUMN_LIST, "", (yyloc)); 
         (yyval.node)->addChild((yyvsp[0].node));
     }
-#line 1466 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1973 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 22: /* column_list: column_list ',' column_name  */
-#line 195 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 41: /* column_list: column_list ',' column_name  */
+#line 335 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                                   {
         (yyvsp[-2].node)->addChild((yyvsp[0].node));
         (yyval.node) = (yyvsp[-2].node);
     }
-#line 1475 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1982 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 23: /* column_name: IDENTIFIER  */
-#line 202 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 42: /* column_name: IDENTIFIER  */
+#line 342 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                {
         (yyval.node) = new ASTNode(IDENTIFIER_NODE, (yyvsp[0].str_val), (yylsp[0]));
         free((yyvsp[0].str_val));
     }
-#line 1484 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 1991 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 24: /* optional_where_clause: %empty  */
-#line 209 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 43: /* column_name: IDENTIFIER '.' IDENTIFIER  */
+#line 346 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                                {
+        std::string qualified_name = std::string((yyvsp[-2].str_val)) + "." + std::string((yyvsp[0].str_val));
+        (yyval.node) = new ASTNode(IDENTIFIER_NODE, qualified_name, (yyloc));
+        free((yyvsp[-2].str_val));
+        free((yyvsp[0].str_val));
+    }
+#line 2002 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 44: /* optional_where_clause: %empty  */
+#line 355 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                                                       { (yyval.node) = nullptr; }
-#line 1490 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2008 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 25: /* optional_where_clause: where_clause  */
-#line 210 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 45: /* optional_where_clause: where_clause  */
+#line 356 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                    { (yyval.node) = (yyvsp[0].node); }
-#line 1496 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2014 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 26: /* where_clause: K_WHERE expression  */
-#line 214 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 46: /* where_clause: K_WHERE expression  */
+#line 360 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                        {
         (yyval.node) = new ASTNode(WHERE_CLAUSE, "", (yyloc));
         (yyval.node)->addChild((yyvsp[0].node)); // 将表达式作为 WHERE_CLAUSE 的子节点
     }
-#line 1505 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2023 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 27: /* insert_statement: K_INSERT K_INTO IDENTIFIER optional_column_list K_VALUES '(' value_list ')'  */
-#line 224 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-                                                                                {
+  case 47: /* $@5: %empty  */
+#line 370 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+             { current_parser_state = STATE_EXPECTING_INTO_AFTER_INSERT; }
+#line 2029 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 48: /* $@6: %empty  */
+#line 371 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                                           { current_parser_state = STATE_EXPECTING_VALUES_AFTER_TABLE; }
+#line 2035 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 49: /* insert_statement: K_INSERT $@5 K_INTO IDENTIFIER optional_column_list $@6 K_VALUES '(' value_list ')'  */
+#line 372 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                                {
         (yyval.node) = new ASTNode(INSERT_STMT, "", (yyloc));
         // 子节点1: 表名
-        (yyval.node)->addChild(new ASTNode(IDENTIFIER_NODE, (yyvsp[-5].str_val), (yylsp[-5])));
+        (yyval.node)->addChild(new ASTNode(IDENTIFIER_NODE, (yyvsp[-6].str_val), (yylsp[-6])));
         // 子节点2: 可选的列列表 (可能为nullptr)
-        (yyval.node)->addChild((yyvsp[-4].node));
+        (yyval.node)->addChild((yyvsp[-5].node));
         // 子节点3: 值列表
         (yyval.node)->addChild((yyvsp[-1].node));   
-        free((yyvsp[-5].str_val));
+        free((yyvsp[-6].str_val));
     }
-#line 1520 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2050 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 28: /* optional_column_list: %empty  */
-#line 242 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 50: /* optional_column_list: %empty  */
+#line 390 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                 { (yyval.node) = nullptr; }
-#line 1526 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2056 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 29: /* optional_column_list: '(' column_list ')'  */
-#line 243 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 51: /* optional_column_list: '(' column_list ')'  */
+#line 391 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                           { (yyval.node) = (yyvsp[-1].node); }
-#line 1532 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2062 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 30: /* value_list: value  */
-#line 247 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 52: /* value_list: value  */
+#line 395 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
           {
         (yyval.node) = new ASTNode(VALUES_LIST, "", (yyloc));
         (yyval.node)->addChild((yyvsp[0].node));
     }
-#line 1541 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2071 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 31: /* value_list: value_list ',' value  */
-#line 251 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 53: /* value_list: value_list ',' value  */
+#line 399 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                            {
         (yyvsp[-2].node)->addChild((yyvsp[0].node));
         (yyval.node) = (yyvsp[-2].node);
     }
-#line 1550 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2080 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 32: /* value: literal  */
-#line 258 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 54: /* value: literal  */
+#line 406 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
             { (yyval.node) = (yyvsp[0].node); }
-#line 1556 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2086 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 33: /* delete_statement: K_DELETE K_FROM IDENTIFIER optional_where_clause  */
-#line 264 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 55: /* delete_statement: K_DELETE K_FROM IDENTIFIER optional_where_clause  */
+#line 412 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                                                      {
         (yyval.node) = new ASTNode(DELETE_STMT, "", (yyloc));
         // 子节点1: 表名
-        (yyval.node)->addChild(new ASTNode(IDENTIFIER_NODE, (yyvsp[-1].str_val), (yylsp[-1])));
+        (yyval.node)->addChild(new ASTNode(FROM_CLAUSE, (yyvsp[-1].str_val), (yylsp[-1])));
         // 子节点2: 可选的 WHERE 子句 (可能为nullptr)
         (yyval.node)->addChild((yyvsp[0].node));
         free((yyvsp[-1].str_val));
     }
-#line 1569 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2099 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 34: /* expression: IDENTIFIER comparison_operator literal  */
-#line 279 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-                                           {
+  case 56: /* expression: column_ref comparison_operator column_ref  */
+#line 426 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                                              {
         (yyval.node) = (yyvsp[-1].node);
-        (yyval.node)->addChild(new ASTNode(IDENTIFIER_NODE, (yyvsp[-2].str_val), (yylsp[-2])));
+        (yyval.node)->location = (yyloc);
+        (yyval.node)->addChild((yyvsp[-2].node));
         (yyval.node)->addChild((yyvsp[0].node));
-        free((yyvsp[-2].str_val));
     }
-#line 1580 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2110 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 35: /* comparison_operator: OP_EQ  */
-#line 288 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-           { (yyval.node) = new ASTNode(BINARY_EXPR, "=", (yylsp[0]));  }
-#line 1586 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+  case 57: /* expression: column_ref comparison_operator literal  */
+#line 432 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                                             { // 也保留 列=字面量
+        (yyval.node) = (yyvsp[-1].node);
+        (yyval.node)->location = (yyloc);
+        (yyval.node)->addChild((yyvsp[-2].node));
+        (yyval.node)->addChild((yyvsp[0].node));
+    }
+#line 2121 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 36: /* comparison_operator: OP_NEQ  */
-#line 289 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 58: /* column_ref: IDENTIFIER  */
+#line 441 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+               {
+        (yyval.node) = new ASTNode(IDENTIFIER_NODE, (yyvsp[0].str_val), (yylsp[0]));
+        free((yyvsp[0].str_val));
+    }
+#line 2130 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 59: /* column_ref: IDENTIFIER '.' IDENTIFIER  */
+#line 445 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+                                {
+        std::string qualified_name = std::string((yyvsp[-2].str_val)) + "." + std::string((yyvsp[0].str_val));
+        (yyval.node) = new ASTNode(IDENTIFIER_NODE, qualified_name, (yyloc));
+        free((yyvsp[-2].str_val));
+        free((yyvsp[0].str_val));
+    }
+#line 2141 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 60: /* comparison_operator: OP_EQ  */
+#line 454 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+           { (yyval.node) = new ASTNode(EQUAL_OPERATOR, "=", (yylsp[0]));  }
+#line 2147 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+    break;
+
+  case 61: /* comparison_operator: OP_NEQ  */
+#line 455 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
              { (yyval.node) = new ASTNode(BINARY_EXPR, "!=", (yylsp[0])); }
-#line 1592 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2153 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 37: /* comparison_operator: OP_GT  */
-#line 290 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-             { (yyval.node) = new ASTNode(BINARY_EXPR, ">", (yylsp[0]));  }
-#line 1598 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+  case 62: /* comparison_operator: OP_GT  */
+#line 456 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+             { (yyval.node) = new ASTNode(GREATER_THAN_OPERATOR, ">", (yylsp[0]));  }
+#line 2159 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 38: /* comparison_operator: OP_GTE  */
-#line 291 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-              { (yyval.node) = new ASTNode(BINARY_EXPR, ">=", (yylsp[0])); }
-#line 1604 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+  case 63: /* comparison_operator: OP_GTE  */
+#line 457 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+              { (yyval.node) = new ASTNode(GREATER_THAN_OR_EQUAL_OPERATOR, ">=", (yylsp[0])); }
+#line 2165 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 39: /* comparison_operator: OP_LT  */
-#line 292 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-             { (yyval.node) = new ASTNode(BINARY_EXPR, "<", (yylsp[0]));  }
-#line 1610 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+  case 64: /* comparison_operator: OP_LT  */
+#line 458 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+             { (yyval.node) = new ASTNode(LESS_THAN_OPERATOR, "<", (yylsp[0]));  }
+#line 2171 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 40: /* comparison_operator: OP_LTE  */
-#line 293 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
-              { (yyval.node) = new ASTNode(BINARY_EXPR, "<=", (yylsp[0])); }
-#line 1616 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+  case 65: /* comparison_operator: OP_LTE  */
+#line 459 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+              { (yyval.node) = new ASTNode(LESS_THAN_OR_EQUAL_OPERATOR, "<=", (yylsp[0])); }
+#line 2177 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 41: /* literal: INTEGER_CONST  */
-#line 297 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 66: /* literal: INTEGER_CONST  */
+#line 463 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                   {
         (yyval.node) = new ASTNode(INTEGER_LITERAL_NODE, std::to_string((yyvsp[0].int_val)), (yylsp[0]));
     }
-#line 1624 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2185 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
-  case 42: /* literal: STRING_CONST  */
-#line 300 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+  case 67: /* literal: STRING_CONST  */
+#line 466 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
                    {
         (yyval.node) = new ASTNode(STRING_LITERAL_NODE, (yyvsp[0].str_val), (yylsp[0]));
         free((yyvsp[0].str_val));
     }
-#line 1633 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2194 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;
 
 
-#line 1637 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
+#line 2198 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
 
       default: break;
     }
@@ -1681,7 +2242,37 @@ yyerrlab:
   if (!yyerrstatus)
     {
       ++yynerrs;
-      yyerror (YY_("syntax error"));
+      {
+        yypcontext_t yyctx
+          = {yyssp, yytoken, &yylloc};
+        char const *yymsgp = YY_("syntax error");
+        int yysyntax_error_status;
+        yysyntax_error_status = yysyntax_error (&yymsg_alloc, &yymsg, &yyctx);
+        if (yysyntax_error_status == 0)
+          yymsgp = yymsg;
+        else if (yysyntax_error_status == -1)
+          {
+            if (yymsg != yymsgbuf)
+              YYSTACK_FREE (yymsg);
+            yymsg = YY_CAST (char *,
+                             YYSTACK_ALLOC (YY_CAST (YYSIZE_T, yymsg_alloc)));
+            if (yymsg)
+              {
+                yysyntax_error_status
+                  = yysyntax_error (&yymsg_alloc, &yymsg, &yyctx);
+                yymsgp = yymsg;
+              }
+            else
+              {
+                yymsg = yymsgbuf;
+                yymsg_alloc = sizeof yymsgbuf;
+                yysyntax_error_status = YYENOMEM;
+              }
+          }
+        yyerror (yymsgp);
+        if (yysyntax_error_status == YYENOMEM)
+          YYNOMEM;
+      }
     }
 
   yyerror_range[1] = yylloc;
@@ -1827,15 +2418,33 @@ yyreturnlab:
   if (yyss != yyssa)
     YYSTACK_FREE (yyss);
 #endif
-
+  if (yymsg != yymsgbuf)
+    YYSTACK_FREE (yymsg);
   return yyresult;
 }
 
-#line 306 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
+#line 472 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.y"
 
 /* C++ 代码部分 */
 /* 错误处理函数现在可以打印精确的位置 */
-void yyerror(YYLTYPE* locp, const char* s) {
+void yyerror(Location* locp, const char* s) {
+    std::string error_message(s);
+
+    // 检查是否是“意外的标识符”错误
+    if (error_message.find("unexpected IDENTIFIER") != std::string::npos && last_identifier_text != nullptr) {
+        
+        std::string suggestion = findClosestKeyword(last_identifier_text, current_parser_state);
+        if (!suggestion.empty()) {
+            // 如果找到了建议，就打印自定义的错误信息
+            std::cerr << "[Parser] Error at line " << locp->first_line 
+                      << ", column " << locp->first_column 
+                      << ": syntax error, unexpected keyword '" << last_identifier_text << "'." << std::endl;
+            std::cerr << "         Did you mean '" << suggestion << "'?" << std::endl;
+            return; // 打印完自定义信息后直接返回，不再打印 Bison 的默认信息
+        }
+    }
+    
+    // 对于所有其他类型的错误，打印 Bison 提供的详细信息
     std::cerr << "[Parser] Error at line " << locp->first_line 
               << ", column " << locp->first_column 
               << ": " << s << std::endl;
@@ -1877,59 +2486,126 @@ ASTNode* parse_sql_string(const std::string& sql) {
     return nullptr;
 }
 
-// 简单的 AST 打印函数，用于演示
-/* void print_ast(ASTNode* node, int indent = 0) {
-    if (!node) return;
-    for (int i = 0; i < indent; ++i) std::cout << "  ";
-    std::cout << "Type: " << node->type;
-    if (!node->value.empty()) {
-        std::cout << ", Value: '" << node->value << "'";
-    }
-    std::cout << std::endl;
-    for (ASTNode* child : node->children) {
-        print_ast(child, indent + 1);
+/* std::string nodeTypeToString(ASTNodeType type)
+{
+    switch (type)
+    {
+    case ROOT_NODE:
+        return "ROOT_NODE";
+    case CREATE_TABLE_STMT:
+        return "CREATE_TABLE_STMT";
+    case INSERT_STMT:
+        return "INSERT_STMT";
+    case SELECT_STMT:
+        return "SELECT_STMT";
+    case DELETE_STMT:
+        return "DELETE_STMT";
+    case IDENTIFIER_NODE:
+        return "IDENTIFIER_NODE";
+    case DATA_TYPE_NODE:
+        return "DATA_TYPE_NODE";
+    case INTEGER_LITERAL_NODE:
+        return "INTEGER_LITERAL_NODE";
+    case STRING_LITERAL_NODE:
+        return "STRING_LITERAL_NODE";
+    case COLUMN_DEFINITIONS_LIST:
+        return "COLUMN_DEFINITIONS_LIST";
+    case VALUES_LIST:
+        return "VALUES_LIST";
+    case SELECT_LIST:
+        return "SELECT_LIST";
+    case WHERE_CLAUSE:
+        return "WHERE_CLAUSE";
+    case EQUAL_OPERATOR:
+        return "EQUAL_OPERATOR";
+    case GREATER_THAN_OPERATOR:
+        return "GREATER_THAN_OPERATOR";
+    case GREATER_THAN_OR_EQUAL_OPERATOR:
+        return "GREATER_THAN_OR_EQUAL_OPERATOR";
+    case LESS_THAN_OPERATOR:
+        return "LESS_THAN_OPERATOR";
+    case LESS_THAN_OR_EQUAL_OPERATOR:
+        return "LESS_THAN_OR_EQUAL_OPERATOR";
+    case BINARY_EXPR:
+        return "BINARY_EXPR";
+    case FROM_CLAUSE:
+        return "FROM_CLAUSE";
+    case JOIN_CLAUSE:
+        return "JOIN_CLAUSE";
+    case ON_CONDITION:
+        return "ON_CONDITION";
+    case GROUP_BY_CLAUSE:
+        return "GROUP_BY_CLAUSE";
+    case ORDER_BY_CLAUSE:
+        return "ORDER_BY_CLAUSE";
+    case UPDATE_STMT:
+        return "UPDATE_STMT";
+    case SET_CLAUSE:
+        return "SET_CLAUSE";
+    default:
+        return "UNKNOWN_NODE";
     }
 } */
-
-// 主函数 (用于独立测试)
-/* int main() {
-    std::string sql_query;
-    std::cout << "Enter SQL statements. Type 'exit' or 'quit' to leave." << std::endl;
-
-    while (true) {
-        std::cout << "SQL> ";
-        std::getline(std::cin, sql_query);
-
-        if (sql_query == "exit" || sql_query == "quit") {
-            break;
-        }
-
-        if (sql_query.empty()) {
-            continue;
-        }
-
-        // 调用我们封装的解析函数
-        ASTNode* root = parse_sql_string(sql_query);
-
-        if (root) {
-            std::cout << "------------------------------------------" << std::endl;
-            std::cout << "Parsing successful! AST Structure:" << std::endl;
-            print_ast(root); // 打印 AST 树进行验证
-            std::cout << "------------------------------------------" << std::endl;
-            
-            // 在这里，您可以将 root 交给语义分析器
-            // semantic_analyzer.analyze(root);
-
-            // 清理内存
-            delete root;
-            ast_root = nullptr; // 重置全局指针
-        } else {
-            std::cerr << "------------------------------------------" << std::endl;
-            std::cerr << "Parsing failed." << std::endl;
-            std::cerr << "------------------------------------------" << std::endl;
-        }
+/* void print_AST(ASTNode* node, int depth = 0) {
+    if (!node)
+    {
+        return;
     }
 
-    std::cout << "Goodbye!" << std::endl;
-    return 0;
+    // 打印当前节点的缩进
+    for (int i = 0; i < depth; ++i)
+    {
+        std::cout << "  ";
+    }
+
+    // 打印节点类型和值
+    std::cout << "- " << nodeTypeToString(node->type);
+    if (std::holds_alternative<std::string>(node->value))
+    {
+        std::cout << ": " << std::get<std::string>(node->value);
+    }
+    else if (std::holds_alternative<int>(node->value))
+    {
+        std::cout << ": " << std::get<int>(node->value);
+    }
+
+    // 打印节点的位置
+    std::cout << "  (Line: " << node->location.first_line 
+              << ", Column: " << node->location.first_column << ")" << std::endl;
+
+    // 递归打印所有子节点
+    for (ASTNode *child : node->children)
+    {
+        print_AST(child, depth + 1);
+    }
+} */
+/* int main(int argc, char** argv) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <input_sql_file>" << std::endl;
+        return 1;
+    }
+
+    yyin = fopen(argv[1], "r");
+    if (!yyin) {
+        std::cerr << "Cannot open file: " << argv[1] << std::endl;
+        return 1;
+    }
+
+    int result = yyparse();
+    fclose(yyin);
+
+    if (result == 0 && ast_root != nullptr) {
+        std::cout << "------------------------------------------" << std::endl;
+        std::cout << "Parsing successful! AST Structure:" << std::endl;
+        print_AST(ast_root);
+        std::cout << "------------------------------------------" << std::endl;
+        delete ast_root;
+        ast_root = nullptr;
+    } else {
+        std::cerr << "------------------------------------------" << std::endl;
+        std::cerr << "Parsing failed." << std::endl;
+        std::cerr << "------------------------------------------" << std::endl;
+    }
+
+    return result;
 } */

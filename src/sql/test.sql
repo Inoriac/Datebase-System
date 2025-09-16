@@ -1,3 +1,6 @@
+/* Test SQL commands for the database system */
+
+
 -- 创建一个学生表
 CREATE TABLE students (id INT, name VARCHAR(50), age INT);
 
@@ -15,11 +18,27 @@ DELETE FROM students WHERE age > 21;
 -- 再次查询所有学生
 SELECT name FROM students;
 
-SELECT id, name FROM users WHERE id > 100;
+SELECT
+    users.name,
+    orders.order_id
+FROM
+    users
+JOIN
+    orders
+ON
+    users.id = orders.user_id
+WHERE
+    users.age > 25
+GROUP BY
+    users.name
+ORDER BY
+    orders.order_id;
 
 UPDATE user SET name = 'Alice' WHERE id = 1;
 
 
+/* Additional test cases
+*/
 
 -- CREATE TABLE student(id INT, name VARCHAR, age INT);
 -- INSERT INTO student(id,name,age) VALUES (1,'Alice',20);

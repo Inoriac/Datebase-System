@@ -3,9 +3,14 @@
 #include <iostream>
 #include <string>
 #include "ast.h" // 包含 AST 节点定义
+#include "suggestion.h" // 包含智能纠错建议函数
 
 // 声明由 Flex 生成的词法分析函数
 extern int yylex(); 
+extern FILE* yyin;
+
+// 声明从 Flex 共享的全局变量
+extern char* last_identifier_text;
 
 void yyerror(const char* s); 
 void yyerror(Location* locp, const char* s);
@@ -15,16 +20,22 @@ extern int yylineno;
 // 存储最终AST的根节点
 ASTNode* ast_root = nullptr;
 
+// 存储当前解析状态
+ParserState current_parser_state = STATE_EXPECTING_COMMAND;
+
 #define YYLTYPE Location
 
 %}
 
 %code requires {
     #include "ast.h"
+    #include "suggestion.h"
 }
 
 // 启用位置跟踪
 %locations
+// 启用详细错误信息
+%define parse.error verbose
 
 /* * 定义 yylval 的联合体类型。
  * 语法分析器通过这个联合体从词法分析器接收不同类型的值。
@@ -48,17 +59,26 @@ ASTNode* ast_root = nullptr;
 %token K_INSERT K_INTO K_VALUES 
 %token K_SELECT K_FROM K_WHERE
 %token K_DELETE
+%token K_UPDATE K_SET
 %token K_INT K_VARCHAR
+
+%token K_JOIN K_ON
+%token K_GROUP K_BY K_ORDER
+
 
 /* * 非终结符 (Rules) 
  * 几乎所有的非终结符都会返回一个 ASTNode* 指针
  */
-%type <node> statements statement create_statement insert_statement select_statement
+%type <node> statements statement create_statement insert_statement select_statement update_statement
 %type <node> column_definitions column_definition column_list column_name value_list value
 %type <node> optional_column_list delete_statement
 %type <node> select_list optional_where_clause where_clause expression
 %type <node> comparison_operator literal
 %type <node> data_type optional_varchar_length
+%type <node> from_clause column_ref join_clause
+%type <node> optional_group_by_clause group_by_clause 
+%type <node> optional_order_by_clause order_by_clause 
+%type <node> set_clause set_list assignment // 新增
 
 // 定义操作符 Token
 %token OP_EQ OP_LT OP_GT OP_LTE OP_GTE OP_NEQ
@@ -84,55 +104,105 @@ statements:
     statement {
         // 只有一个语句，创建一个列表节点，并把该语句作为子节点
         $$ = new ASTNode(ROOT_NODE, "", @$);
-        $$->addChild($1);
+        if ($1) $$->addChild($1);   // 在根节点下添加该语句
     }
     | statements statement {
-        // 已经有一个列表了($1)，把新的语句($2)加进去
-        $1->addChild($2);
+        if ($2) $1->addChild($2);   // 已经有一个列表了($1)，把新的语句($2)加进去
         $$ = $1; // 将更新后的列表向上传递
     }
     ;
 
 // 单条 SQL 语句，必须以分号结尾
 statement:
-    create_statement ';' { $$ = $1; }
-    | insert_statement ';' { $$ = $1; }
-    | select_statement ';' { $$ = $1; }
-    | delete_statement ';' { $$ = $1; }
-    | error ';' { yyerrok; } // 错误恢复：如果一条语句语法错误，跳过它直到分号
+    create_statement ';' { current_parser_state = STATE_EXPECTING_COMMAND; $$ = $1; }
+    | insert_statement ';' { current_parser_state = STATE_EXPECTING_COMMAND; $$ = $1; }
+    | select_statement ';' { current_parser_state = STATE_EXPECTING_COMMAND; $$ = $1; }
+    | delete_statement ';' { current_parser_state = STATE_EXPECTING_COMMAND; $$ = $1; }
+    | update_statement ';' { current_parser_state = STATE_EXPECTING_COMMAND; $$ = $1; }
+    | error ';'            { current_parser_state = STATE_EXPECTING_COMMAND; $$ = nullptr; yyerrok; }
     ;
+
+/* --- UPDATE 语句的文法 ---
+ * 示例: UPDATE users SET name = 'Bob' WHERE id = 1;
+ */
+update_statement:
+    K_UPDATE IDENTIFIER set_clause optional_where_clause
+    {
+        $$ = new ASTNode(UPDATE_STMT, "", @$);
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $2, @2)); // 子节点0: 表名
+        $$->addChild($3); // 子节点1: SET_CLAUSE
+        $$->addChild($4); // 子节点2: WHERE_CLAUSE
+        free($2);
+    }
+;
+
+set_clause: // 这是一个辅助规则，实际的节点在 set_list 中创建
+    K_SET set_list
+    {
+        $$ = $2;
+    }
+;
+
+set_list:
+    assignment
+    {
+        $$ = new ASTNode(SET_CLAUSE, "", @$);
+        $$->addChild($1);
+    }
+    | set_list ',' assignment
+    {
+        $1->addChild($3);
+        $$ = $1;
+    }
+;
+
+assignment:
+    IDENTIFIER OP_EQ literal
+    {
+        // 创建一个 EQUAL_OPERATOR 节点来表示赋值
+        $$ = new ASTNode(EQUAL_OPERATOR, "", @2);
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $1, @1));
+        $$->addChild($3);
+        free($1);
+    }
+;
 
 /* --- CREATE TABLE 语句的文法 ---
  * 示例: CREATE TABLE users (id INT, name VARCHAR);
  */
 create_statement:
-    K_CREATE K_TABLE IDENTIFIER '(' column_definitions ')' {
+    K_CREATE { current_parser_state = STATE_EXPECTING_TABLE_AFTER_CREATE; }
+    K_TABLE IDENTIFIER '(' column_definitions ')' {
         // 创建一个 CREATE_TABLE_STMT 节点
-        $$ = new ASTNode(CREATE_TABLE_STMT, "", @3);
+        $$ = new ASTNode(CREATE_TABLE_STMT, "", @$);
         // 子节点1: 表名 (IDENTIFIER)
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3, @3));
-        // 子节点2: 列定义列表
-        $$->addChild($5);
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $4, @4));
+        // 子节点2: 列定义列表(column_definitions)
+        $$->addChild($6);
 
-        free($3); // 释放由词法分析器中 strdup 分配的内存
+        free($4); // 释放由词法分析器中 strdup 分配的内存
     }
     ;
 
 column_definitions:
     column_definition {
         $$ = new ASTNode(COLUMN_DEFINITIONS_LIST, "", @$);
+        // 只有一个列定义(column_definition)，作为子节点添加
         $$->addChild($1);
     }
     | column_definitions ',' column_definition {
+        // 已经有一个列定义列表，把新的列定义加进去
         $1->addChild($3);
         $$ = $1;
     }
     ;
 
 column_definition:
-    IDENTIFIER data_type {
+    IDENTIFIER { current_parser_state = STATE_EXPECTING_DATA_TYPE; }
+    data_type {
         $$ = new ASTNode(IDENTIFIER_NODE, $1, @1);
-        $$->addChild($2);
+        // 将数据类型作为子节点添加
+        $$->addChild($3);
         free($1);
     }
     ;
@@ -161,18 +231,88 @@ optional_varchar_length:
  * SELECT * FROM users;
  */
 select_statement:
-    K_SELECT select_list K_FROM IDENTIFIER optional_where_clause {
+    K_SELECT select_list  { current_parser_state = STATE_EXPECTING_FROM_AFTER_COLUMNS; }
+    from_clause optional_where_clause 
+    optional_group_by_clause
+    optional_order_by_clause 
+    {
         $$ = new ASTNode(SELECT_STMT, "", @$);
+        // 子节点1: 列表 (select_list)
         $$->addChild($2);
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $4, @4));
+        // 子节点2: 表名 (IDENTIFIER)
+        $$->addChild($4);
+        // 子节点3: 可选的 WHERE 子句 (可能为nullptr)
         $$->addChild($5);
-        free($4);
+    }
+    ;
+
+from_clause:
+    K_FROM { current_parser_state = STATE_EXPECTING_TABLE_AFTER_FROM; }
+    IDENTIFIER 
+    join_clause
+    {
+        // 创建一个 FROM_CLAUSE 节点，并将表名作为其 value
+        $$ = new ASTNode(FROM_CLAUSE, $3, @$);
+        free($3);
+        // 如果有 JOIN 子句，将其作为 FROM_CLAUSE 的子节点
+        $$->addChild($4);
+    }
+    ;
+
+join_clause:
+    /* empty */ { $$ = nullptr; }
+    | K_JOIN IDENTIFIER K_ON expression
+    {
+        // 創建 JOIN_CLAUSE 節點
+        $$ = new ASTNode(JOIN_CLAUSE, "", @1);
+        // 子節點0: 被連接的表
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $2, @2));
+        free($2);
+        // 子節點1: ON 條件
+        ASTNode* on_cond = new ASTNode(ON_CONDITION, "", @3);
+        on_cond->addChild($4);
+        $$->addChild(on_cond);
+    }
+    ;
+
+optional_group_by_clause:
+    /* empty */ { $$ = nullptr; }
+    | group_by_clause { $$ = $1; }
+;
+
+group_by_clause:
+    K_GROUP K_BY column_list
+    {
+        $$ = new ASTNode(GROUP_BY_CLAUSE, "", @$);
+        for (auto child : $3->children) {
+            $$->addChild(child);
+        }
+        $3->children.clear(); // 避免双重释放
+        delete $3;
+    }
+;
+
+optional_order_by_clause:
+    /* empty */ { $$ = nullptr; }
+    | order_by_clause { $$ = $1; }
+    ;
+
+order_by_clause:
+    K_ORDER K_BY column_list
+    {
+        $$ = new ASTNode(ORDER_BY_CLAUSE, "", @$);
+        for (auto child : $3->children) {
+            $$->addChild(child);
+        }
+        $3->children.clear(); // 避免双重释放
+        delete $3;
     }
     ;
 
 select_list:
     '*' { 
         $$ = new ASTNode(SELECT_LIST, "", @$);
+        // 使用一个特殊的 IDENTIFIER_NODE 来表示 '*'
         $$->addChild(new ASTNode(IDENTIFIER_NODE, "*", @1));
     }
     | column_list { 
@@ -203,6 +343,12 @@ column_name:
         $$ = new ASTNode(IDENTIFIER_NODE, $1, @1);
         free($1);
     }
+    | IDENTIFIER '.' IDENTIFIER {
+        std::string qualified_name = std::string($1) + "." + std::string($3);
+        $$ = new ASTNode(IDENTIFIER_NODE, qualified_name, @$);
+        free($1);
+        free($3);
+    }
     ;
 
 optional_where_clause:
@@ -221,15 +367,17 @@ where_clause:
  * 示例: INSERT INTO users VALUES (1, 'Alice');
  */
 insert_statement:
-    K_INSERT K_INTO IDENTIFIER optional_column_list K_VALUES '(' value_list ')' {
+    K_INSERT { current_parser_state = STATE_EXPECTING_INTO_AFTER_INSERT; }
+    K_INTO IDENTIFIER optional_column_list { current_parser_state = STATE_EXPECTING_VALUES_AFTER_TABLE; }
+    K_VALUES '(' value_list ')' {
         $$ = new ASTNode(INSERT_STMT, "", @$);
         // 子节点1: 表名
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3, @3));
+        $$->addChild(new ASTNode(IDENTIFIER_NODE, $4, @4));
         // 子节点2: 可选的列列表 (可能为nullptr)
-        $$->addChild($4);
+        if ($5) $$->addChild($5);
         // 子节点3: 值列表
-        $$->addChild($7);   
-        free($3);
+        $$->addChild($9);   
+        free($4);
     }
     ;
 
@@ -264,7 +412,7 @@ delete_statement:
     K_DELETE K_FROM IDENTIFIER optional_where_clause {
         $$ = new ASTNode(DELETE_STMT, "", @$);
         // 子节点1: 表名
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $3, @3));
+        $$->addChild(new ASTNode(FROM_CLAUSE, $3, @3));
         // 子节点2: 可选的 WHERE 子句 (可能为nullptr)
         $$->addChild($4);
         free($3);
@@ -273,24 +421,42 @@ delete_statement:
 
 
 /* --- WHERE 条件子句的简单文法 ---
- * 注意: 为保持简单，这里只支持 "标识符 操作符 字面量" 形式
  */
 expression:
-    IDENTIFIER comparison_operator literal {
+    column_ref comparison_operator column_ref {
         $$ = $2;
-        $$->addChild(new ASTNode(IDENTIFIER_NODE, $1, @1));
+        $$->location = @$;
+        $$->addChild($1);
         $$->addChild($3);
+    }
+    | column_ref comparison_operator literal { // 也保留 列=字面量
+        $$ = $2;
+        $$->location = @$;
+        $$->addChild($1);
+        $$->addChild($3);
+    }
+    ;
+
+column_ref:
+    IDENTIFIER {
+        $$ = new ASTNode(IDENTIFIER_NODE, $1, @1);
         free($1);
+    }
+    | IDENTIFIER '.' IDENTIFIER {
+        std::string qualified_name = std::string($1) + "." + std::string($3);
+        $$ = new ASTNode(IDENTIFIER_NODE, qualified_name, @$);
+        free($1);
+        free($3);
     }
     ;
 
 comparison_operator:
-    OP_EQ  { $$ = new ASTNode(BINARY_EXPR, "=", @1);  }
+    OP_EQ  { $$ = new ASTNode(EQUAL_OPERATOR, "=", @1);  }
     | OP_NEQ { $$ = new ASTNode(BINARY_EXPR, "!=", @1); }
-    | OP_GT  { $$ = new ASTNode(BINARY_EXPR, ">", @1);  }
-    | OP_GTE  { $$ = new ASTNode(BINARY_EXPR, ">=", @1); }
-    | OP_LT  { $$ = new ASTNode(BINARY_EXPR, "<", @1);  }
-    | OP_LTE  { $$ = new ASTNode(BINARY_EXPR, "<=", @1); }
+    | OP_GT  { $$ = new ASTNode(GREATER_THAN_OPERATOR, ">", @1);  }
+    | OP_GTE  { $$ = new ASTNode(GREATER_THAN_OR_EQUAL_OPERATOR, ">=", @1); }
+    | OP_LT  { $$ = new ASTNode(LESS_THAN_OPERATOR, "<", @1);  }
+    | OP_LTE  { $$ = new ASTNode(LESS_THAN_OR_EQUAL_OPERATOR, "<=", @1); }
     ;
 
 literal:
@@ -306,7 +472,24 @@ literal:
 %%
 /* C++ 代码部分 */
 /* 错误处理函数现在可以打印精确的位置 */
-void yyerror(YYLTYPE* locp, const char* s) {
+void yyerror(Location* locp, const char* s) {
+    std::string error_message(s);
+
+    // 检查是否是“意外的标识符”错误
+    if (error_message.find("unexpected IDENTIFIER") != std::string::npos && last_identifier_text != nullptr) {
+        
+        std::string suggestion = findClosestKeyword(last_identifier_text, current_parser_state);
+        if (!suggestion.empty()) {
+            // 如果找到了建议，就打印自定义的错误信息
+            std::cerr << "[Parser] Error at line " << locp->first_line 
+                      << ", column " << locp->first_column 
+                      << ": syntax error, unexpected keyword '" << last_identifier_text << "'." << std::endl;
+            std::cerr << "         Did you mean '" << suggestion << "'?" << std::endl;
+            return; // 打印完自定义信息后直接返回，不再打印 Bison 的默认信息
+        }
+    }
+    
+    // 对于所有其他类型的错误，打印 Bison 提供的详细信息
     std::cerr << "[Parser] Error at line " << locp->first_line 
               << ", column " << locp->first_column 
               << ": " << s << std::endl;
@@ -348,59 +531,128 @@ ASTNode* parse_sql_string(const std::string& sql) {
     return nullptr;
 }
 
-// 简单的 AST 打印函数，用于演示
-/* void print_ast(ASTNode* node, int indent = 0) {
-    if (!node) return;
-    for (int i = 0; i < indent; ++i) std::cout << "  ";
-    std::cout << "Type: " << node->type;
-    if (!node->value.empty()) {
-        std::cout << ", Value: '" << node->value << "'";
-    }
-    std::cout << std::endl;
-    for (ASTNode* child : node->children) {
-        print_ast(child, indent + 1);
+/* std::string nodeTypeToString(ASTNodeType type)
+{
+    switch (type)
+    {
+    case ROOT_NODE:
+        return "ROOT_NODE";
+    case CREATE_TABLE_STMT:
+        return "CREATE_TABLE_STMT";
+    case INSERT_STMT:
+        return "INSERT_STMT";
+    case SELECT_STMT:
+        return "SELECT_STMT";
+    case DELETE_STMT:
+        return "DELETE_STMT";
+    case IDENTIFIER_NODE:
+        return "IDENTIFIER_NODE";
+    case DATA_TYPE_NODE:
+        return "DATA_TYPE_NODE";
+    case INTEGER_LITERAL_NODE:
+        return "INTEGER_LITERAL_NODE";
+    case STRING_LITERAL_NODE:
+        return "STRING_LITERAL_NODE";
+    case COLUMN_DEFINITIONS_LIST:
+        return "COLUMN_DEFINITIONS_LIST";
+    case VALUES_LIST:
+        return "VALUES_LIST";
+    case SELECT_LIST:
+        return "SELECT_LIST";
+    case COLUMN_LIST:
+        return "COLUMN_LIST";
+    case WHERE_CLAUSE:
+        return "WHERE_CLAUSE";
+    case EQUAL_OPERATOR:
+        return "EQUAL_OPERATOR";
+    case GREATER_THAN_OPERATOR:
+        return "GREATER_THAN_OPERATOR";
+    case GREATER_THAN_OR_EQUAL_OPERATOR:
+        return "GREATER_THAN_OR_EQUAL_OPERATOR";
+    case LESS_THAN_OPERATOR:
+        return "LESS_THAN_OPERATOR";
+    case LESS_THAN_OR_EQUAL_OPERATOR:
+        return "LESS_THAN_OR_EQUAL_OPERATOR";
+    case BINARY_EXPR:
+        return "BINARY_EXPR";
+    case FROM_CLAUSE:
+        return "FROM_CLAUSE";
+    case JOIN_CLAUSE:
+        return "JOIN_CLAUSE";
+    case ON_CONDITION:
+        return "ON_CONDITION";
+    case GROUP_BY_CLAUSE:
+        return "GROUP_BY_CLAUSE";
+    case ORDER_BY_CLAUSE:
+        return "ORDER_BY_CLAUSE";
+    case UPDATE_STMT:
+        return "UPDATE_STMT";
+    case SET_CLAUSE:
+        return "SET_CLAUSE";
+    default:
+        return "UNKNOWN_NODE";
     }
 } */
-
-// 主函数 (用于独立测试)
-/* int main() {
-    std::string sql_query;
-    std::cout << "Enter SQL statements. Type 'exit' or 'quit' to leave." << std::endl;
-
-    while (true) {
-        std::cout << "SQL> ";
-        std::getline(std::cin, sql_query);
-
-        if (sql_query == "exit" || sql_query == "quit") {
-            break;
-        }
-
-        if (sql_query.empty()) {
-            continue;
-        }
-
-        // 调用我们封装的解析函数
-        ASTNode* root = parse_sql_string(sql_query);
-
-        if (root) {
-            std::cout << "------------------------------------------" << std::endl;
-            std::cout << "Parsing successful! AST Structure:" << std::endl;
-            print_ast(root); // 打印 AST 树进行验证
-            std::cout << "------------------------------------------" << std::endl;
-            
-            // 在这里，您可以将 root 交给语义分析器
-            // semantic_analyzer.analyze(root);
-
-            // 清理内存
-            delete root;
-            ast_root = nullptr; // 重置全局指针
-        } else {
-            std::cerr << "------------------------------------------" << std::endl;
-            std::cerr << "Parsing failed." << std::endl;
-            std::cerr << "------------------------------------------" << std::endl;
-        }
+/* void print_AST(ASTNode* node, int depth = 0) {
+    if (!node)
+    {
+        return;
     }
 
-    std::cout << "Goodbye!" << std::endl;
-    return 0;
+    // 打印当前节点的缩进
+    for (int i = 0; i < depth; ++i)
+    {
+        std::cout << "  ";
+    }
+
+    // 打印节点类型和值
+    std::cout << "- " << nodeTypeToString(node->type);
+    if (std::holds_alternative<std::string>(node->value))
+    {
+        std::cout << ": " << std::get<std::string>(node->value);
+    }
+    else if (std::holds_alternative<int>(node->value))
+    {
+        std::cout << ": " << std::get<int>(node->value);
+    }
+
+    // 打印节点的位置
+    std::cout << "  (Line: " << node->location.first_line 
+              << ", Column: " << node->location.first_column << ")" << std::endl;
+
+    // 递归打印所有子节点
+    for (ASTNode *child : node->children)
+    {
+        print_AST(child, depth + 1);
+    }
+} */
+/* int main(int argc, char** argv) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <input_sql_file>" << std::endl;
+        return 1;
+    }
+
+    yyin = fopen(argv[1], "r");
+    if (!yyin) {
+        std::cerr << "Cannot open file: " << argv[1] << std::endl;
+        return 1;
+    }
+
+    int result = yyparse();
+    fclose(yyin);
+
+    if (result == 0 && ast_root != nullptr) {
+        std::cout << "------------------------------------------" << std::endl;
+        std::cout << "Parsing successful! AST Structure:" << std::endl;
+        print_AST(ast_root);
+        std::cout << "------------------------------------------" << std::endl;
+        delete ast_root;
+        ast_root = nullptr;
+    } else {
+        std::cerr << "------------------------------------------" << std::endl;
+        std::cerr << "Parsing failed." << std::endl;
+        std::cerr << "------------------------------------------" << std::endl;
+    }
+
+    return result;
 } */
