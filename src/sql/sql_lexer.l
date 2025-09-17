@@ -54,7 +54,7 @@ ID_CHAR  [a-zA-Z0-9_]
 <INITIAL>\n+                     { column_count = 1; /* 遇到换行，重置列号 */ }
 <INITIAL>--.*                    { column_count = 1; /* 注释到行尾，也重置 */ }
 
-<INITIAL>"SELECT"                { return K_SELECT; }
+<INITIAL>"SEL"                { return K_SELECT; }
 <INITIAL>"FROM"                  { return K_FROM; }
 <INITIAL>"WHERE"                 { return K_WHERE; }
 <INITIAL>"CREATE"                { return K_CREATE; }
