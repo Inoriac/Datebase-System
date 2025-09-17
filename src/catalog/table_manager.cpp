@@ -128,13 +128,10 @@ static bool CompareValues(const Value& lhs, DataType type, CmpOp op,
     switch (type) {
         case DataType::Int: {
             if (!std::holds_alternative<int>(lhs)) {
-                std::cout << "CompareValues: lhs is not int, type=" << lhs.index() << std::endl;
                 return false;
             }
             int lv = std::get<int>(lhs);
             int rv = int_value;
-            std::cout << "CompareValues: comparing int " << lv << " with " << rv << ", op=" << static_cast<int>(op) << std::endl;
-            std::cout << "CompareValues: int_value=" << int_value << ", is_string=" << is_string << ", is_bool=" << is_bool << std::endl;
             switch (op) {
                 case CmpOp::EQ: return lv == rv;
                 case CmpOp::NE: return lv != rv;
@@ -872,7 +869,6 @@ int TableManager::GetPageCount(const std::string &table_name) {
 // ========= 统计/调试 ===========
 void TableManager::PrintTableInfo(const std::string &table_name) {
     if (!table_schemas_.count(table_name)) {
-        std::cout << "[TableManager] table not found: " << table_name << std::endl;
         return;
     }
 

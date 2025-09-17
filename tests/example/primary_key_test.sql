@@ -28,4 +28,4 @@ UPDATE users SET email = 'alice.new@example.com' WHERE id = 1;
 
 -- 7. 删除操作
 -- 删除特定用户
-DELETE FROM users WHERE id = 4;
+DELETE FROM users WHERE id = 1;

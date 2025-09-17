@@ -339,7 +339,6 @@ TEST_F(PrefetchStrategyTest, SequentialAccessPattern) {  // 测试顺序访问�
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
     
-    std::cout << "顺序访问耗时: " << duration.count() << "μs" << std::endl;
     
     // 验证预取统计
     auto stats = buffer_pool_->GetPrefetchStats();
@@ -366,7 +365,6 @@ TEST_F(PrefetchStrategyTest, RandomAccessPattern) {  // 测试随机访问模式
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
     
-    std::cout << "随机访问耗时: " << duration.count() << "μs" << std::endl;
     
     // 验证预取统计
     auto stats = buffer_pool_->GetPrefetchStats();
@@ -393,7 +391,6 @@ TEST_F(PrefetchStrategyTest, RangeAccessPattern) {  // 测试范围访问模式�
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
     
-    std::cout << "范围访问耗时: " << duration.count() << "μs" << std::endl;
     
     // 验证预取统计
     auto stats = buffer_pool_->GetPrefetchStats();

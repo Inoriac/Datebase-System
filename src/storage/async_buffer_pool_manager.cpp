@@ -224,9 +224,19 @@ bool AsyncBufferPoolManager::DeletePage(int page_id) {
 int AsyncBufferPoolManager::EvictPage() {
     if (lru_list_.empty()) return -1;
     
-    int victim_page_id = lru_list_.back();
-    lru_list_.pop_back();
-    return victim_page_id;
+    // 从LRU列表尾部开始查找可以淘汰的页面
+    for (auto it = lru_list_.rbegin(); it != lru_list_.rend(); ++it) {
+        int page_id = *it;
+        
+        // 检查引用计数，只有引用计数为0或不存在时才可淘汰
+        if (!page_ref_count_.count(page_id) || page_ref_count_[page_id] <= 0) {
+            lru_list_.remove(page_id);
+            return page_id;
+        }
+    }
+    
+    // 所有页面都有活跃引用，无法淘汰
+    return -1;
 }
 
 // 内部实现方法
@@ -285,6 +295,7 @@ Page* AsyncBufferPoolManager::DoFetchPage(int page_id) {
 
     page_table_[page_id] = new_page;
     lru_list_.push_front(page_id);
+    page_ref_count_[page_id] = 1;  // 初始化引用计数为1
     return new_page;
 }
 
@@ -358,6 +369,12 @@ bool AsyncBufferPoolManager::DoDeletePage(int page_id) {
     if (!page_table_.count(page_id)) {
         disk_manager_->DeallocatePage(page_id);
         return true;
+    }
+
+    // 检查引用计数，如果有活跃引用则不能删除
+    if (page_ref_count_.count(page_id) && page_ref_count_[page_id] > 0) {
+        std::cerr << "Warning: trying to delete page with active references" << std::endl;
+        return false;
     }
 
     Page *page = page_table_[page_id];
