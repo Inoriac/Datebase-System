@@ -14,8 +14,13 @@ static std::string build_condition_from_where(ASTNode* where) {
                 where ? static_cast<int>(where->type) : -1, 
                 where ? where->children.size() : 0);
     
-    if (!where || where->children.empty()) {
-        logger->Info("build_condition_from_where: returning empty string");
+    if (!where) {
+        logger->Info("build_condition_from_where: where is null, returning empty string");
+        return "";
+    }
+    
+    if (where->children.empty()) {
+        logger->Info("build_condition_from_where: where has no children, returning empty string");
         return "";
     }
 
@@ -32,6 +37,7 @@ static std::string build_condition_from_where(ASTNode* where) {
     // 检查是否是支持的操作符类型
     bool is_supported_operator = (expr->type == BINARY_EXPR ||
                                  expr->type == EQUAL_OPERATOR ||
+                                 expr->type == NOT_EQUAL_OPERATOR ||
                                  expr->type == GREATER_THAN_OPERATOR ||
                                  expr->type == GREATER_THAN_OR_EQUAL_OPERATOR ||
                                  expr->type == LESS_THAN_OPERATOR ||
@@ -53,9 +59,35 @@ static std::string build_condition_from_where(ASTNode* where) {
             lhs = std::get<std::string>(expr->children[0]->value);
     }
 
-    // 操作符在expr节点本身的value中
-    if (std::holds_alternative<std::string>(expr->value))
-        op = std::get<std::string>(expr->value);
+    // 根据expr节点类型确定操作符
+    switch (expr->type) {
+        case EQUAL_OPERATOR:
+            op = "=";
+            break;
+        case NOT_EQUAL_OPERATOR:
+            op = "!=";
+            break;
+        case GREATER_THAN_OPERATOR:
+            op = ">";
+            break;
+        case GREATER_THAN_OR_EQUAL_OPERATOR:
+            op = ">=";
+            break;
+        case LESS_THAN_OPERATOR:
+            op = "<";
+            break;
+        case LESS_THAN_OR_EQUAL_OPERATOR:
+            op = "<=";
+            break;
+        case BINARY_EXPR:
+            // 对于BINARY_EXPR，操作符在value中
+            if (std::holds_alternative<std::string>(expr->value))
+                op = std::get<std::string>(expr->value);
+            break;
+        default:
+            logger->Info("build_condition_from_where: Unsupported operator type {}", static_cast<int>(expr->type));
+            return "";
+    }
 
     // children[1]: INTEGER_LITERAL_NODE 或 STRING_LITERAL_NODE (值)
     if (expr->children[1]->type == INTEGER_LITERAL_NODE) {
@@ -83,6 +115,16 @@ static std::string build_condition_from_where(ASTNode* where) {
 
     std::string result = lhs + op + rhs;
     logger->Info("build_condition_from_where: final result='{}'", result);
+    
+    // 添加更详细的调试信息
+    logger->Info("build_condition_from_where: expr->type={}, children.size()={}", 
+                static_cast<int>(expr->type), expr->children.size());
+    if (expr->children.size() >= 2) {
+        logger->Info("build_condition_from_where: left child type={}, right child type={}", 
+                    static_cast<int>(expr->children[0]->type), 
+                    static_cast<int>(expr->children[1]->type));
+    }
+    
     return result;
 }
 
@@ -350,20 +392,24 @@ std::unique_ptr<Tuple> FilterOperator::next()
         auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
         logger->Info("FilterOperator: table_name='{}', condition_str='{}'", table_name, condition_str);
         
-        // 添加调试信息：检查条件解析
+        // 添加更详细的调试信息
         if (condition) {
             logger->Info("FilterOperator: condition node type={}, children.size()={}", 
                         static_cast<int>(condition->type), condition->children.size());
+            if (!condition->children.empty()) {
+                logger->Info("FilterOperator: first child type={}", 
+                            static_cast<int>(condition->children[0]->type));
+            }
+        } else {
+            logger->Info("FilterOperator: condition is null");
         }
+        
 
         // 获取要选择的列名
         std::vector<std::string> select_columns;
 
-        // 检查是否有ProjectOperator指定了列
-        if (child && child->type == PROJECT_OP) {
-            ProjectOperator* proj_op = static_cast<ProjectOperator*>(child.get());
-            select_columns = proj_op->columns;
-        }
+        // FilterOperator的子节点是SeqScanOperator，不是ProjectOperator
+        // 列选择由外层的ProjectOperator处理，这里我们选择所有列
 
         // 如果没有指定列，或者指定了"*"，则选择所有列
         if (select_columns.empty() || (select_columns.size() == 1 && select_columns[0] == "*")) {

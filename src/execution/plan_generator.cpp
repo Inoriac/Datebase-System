@@ -119,7 +119,7 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
         if (node->children.size() > 2 && node->children[2]->type == WHERE_CLAUSE)
         {
             ASTNode *where_node = node->children[2];
-            child_op = std::make_unique<FilterOperator>(std::move(child_op), where_node->children[0], tables);
+            child_op = std::make_unique<FilterOperator>(std::move(child_op), where_node->children[0], table_manager_);
         }
 
         // 3. 创建 ProjectOperator

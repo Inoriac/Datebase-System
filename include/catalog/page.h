@@ -38,5 +38,5 @@ public:
 private:
     int page_id_;       // 页号
     bool is_dirty_;     // 是否被修改
-    char data_[PAGE_SIZE]; // 页shuju
+    char data_[PAGE_SIZE]; // 页数据
 };

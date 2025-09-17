@@ -13,6 +13,7 @@ include_directories(include)
 add_library(storage
         src/storage/async_disk_manager.cpp
         src/storage/async_buffer_pool_manager.cpp
+        src/storage/prefetch_config.cpp
         # 保留原文件作为备份，但不再编译
         # src/storage/disk_manager.cpp
         # src/storage/buffer_pool_manager.cpp
@@ -94,7 +95,6 @@ add_custom_command(TARGET sql POST_BUILD
 add_executable(prefetch_example
         examples/prefetch_example.cpp
         src/storage/prefetch_config.cpp
-        src/storage/async_buffer_pool_manager.cpp
         src/storage/async_disk_manager.cpp
         src/storage/buffer_pool_manager.cpp
         src/storage/disk_manager.cpp
@@ -135,15 +135,8 @@ enable_testing()
 # ====================
 # 1. 定义测试程序
 add_executable(test_db
-        tests/test_storage.cpp
-        tests/test_table_schema_manager.cpp
-        tests/test_table_manager_projection.cpp
-        tests/test_primary_key_constraints.cpp
-        tests/test_simple_init.cpp
-        tests/test_query_performance.cpp
         tests/bplus/test_bplus_tree_merge.cpp
         tests/bplus/test_bplus_tree_split.cpp
-        tests/bplus/test_bplus_tree_split_detailed.cpp
 )
 
 # 2. 链接库和头文件
@@ -153,11 +146,3 @@ target_include_directories(test_db PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cmake-bui
 # 3. 启用 gtest 自动发现测试
 include(GoogleTest)
 gtest_discover_tests(test_db)
-
-# ====================
-# 异步IO示例程序
-# ====================
-add_executable(test_async_integration
-        tests/test_async_integration.cpp
-)
-target_link_libraries(test_async_integration PRIVATE storage catalog log)

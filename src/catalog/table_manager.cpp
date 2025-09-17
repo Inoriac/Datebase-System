@@ -134,6 +134,7 @@ static bool CompareValues(const Value& lhs, DataType type, CmpOp op,
             int lv = std::get<int>(lhs);
             int rv = int_value;
             std::cout << "CompareValues: comparing int " << lv << " with " << rv << ", op=" << static_cast<int>(op) << std::endl;
+            std::cout << "CompareValues: int_value=" << int_value << ", is_string=" << is_string << ", is_bool=" << is_bool << std::endl;
             switch (op) {
                 case CmpOp::EQ: return lv == rv;
                 case CmpOp::NE: return lv != rv;
@@ -574,6 +575,10 @@ std::vector<Record> TableManager::SelectRecordsWithCondition(const std::string &
     }
     logger_->Debug("SelectRecordsWithCondition: Parsed condition - col='{}', op={}, lit='{}', is_str={}, is_b={}, iv={}, bv={}", 
                   col, static_cast<int>(op), lit, is_str, is_b, iv, bv);
+    
+    // 添加更详细的调试信息
+    logger_->Info("SelectRecordsWithCondition: Input condition='{}', parsed col='{}', op={}, lit='{}'", 
+                  cond, col, static_cast<int>(op), lit);
 
     int col_idx = FindColumnIndexByName(schema, col);
     if (col_idx < 0) return out;

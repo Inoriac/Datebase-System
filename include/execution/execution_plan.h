@@ -198,6 +198,11 @@ public:
         type = FILTER_OP;
         child = std::move(child_op);
         current_row_index = 0;
+        // 从tables映射中获取TableManager（假设所有表都使用同一个TableManager）
+        if (!tables.empty()) {
+            // 这里需要从TableInfo中获取TableManager，但TableInfo可能没有这个字段
+            // 暂时设置为nullptr，在next()方法中通过其他方式获取
+        }
     }
     
     // 2. 旧版本：使用TableManager
