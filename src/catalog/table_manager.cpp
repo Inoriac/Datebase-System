@@ -270,8 +270,9 @@ bool TableManager::CreateTable(const TableSchema &schema) {
         return false;
     }
 
-    // 为主键自动创建索引
-    if (schema.primary_key_index_ >= 0 && schema.primary_key_index_ < static_cast<int>(schema.columns_.size())) {
+    // 为主键自动创建索引（系统目录表除外，避免初始化时的循环依赖）
+    if (schema.table_name_ != TableSchemaManager::SystemCatalogTableName() &&
+        schema.primary_key_index_ >= 0 && schema.primary_key_index_ < static_cast<int>(schema.columns_.size())) {
         const std::string& pk_column_name = schema.columns_[schema.primary_key_index_].column_name_;
         if (index_manager_->CreateIndex(schema.table_name_, pk_column_name)) {
             std::cout << "TableManager: 为主键列 " << pk_column_name << " 创建索引成功" << std::endl;

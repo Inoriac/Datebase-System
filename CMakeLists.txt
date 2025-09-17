@@ -137,6 +137,7 @@ enable_testing()
 add_executable(test_db
         tests/bplus/test_bplus_tree_merge.cpp
         tests/bplus/test_bplus_tree_split.cpp
+        tests/async/test_prefetch.cpp
 )
 
 # 2. 链接库和头文件

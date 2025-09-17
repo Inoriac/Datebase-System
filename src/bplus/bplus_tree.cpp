@@ -125,8 +125,19 @@ BPlusTreeIndex::BPlusTreeIndex(BufferPoolManager* bpm, const std::string& table_
     : bpm_(bpm), table_name_(table_name), column_name_(column_name), 
       column_index_(column_index), root_page_id_(-1), max_keys_per_node_(50), height_(0) {
     
+    // 检查 BufferPoolManager 是否有效
+    if (!bpm_) {
+        std::cerr << "ERROR: BufferPoolManager is null in BPlusTreeIndex constructor" << std::endl;
+        return;
+    }
+    
     // 初始化日志器
-    logger_ = DatabaseSystem::Log::LogConfig::GetBPlusTreeLogger();
+    try {
+        logger_ = DatabaseSystem::Log::LogConfig::GetBPlusTreeLogger();
+    } catch (const std::exception& e) {
+        std::cerr << "WARNING: Failed to initialize logger: " << e.what() << std::endl;
+        // 继续执行，但不使用日志
+    }
     
     // 根据列类型设置键类型
     // 简化实现，根据列名判断类型
@@ -138,9 +149,11 @@ BPlusTreeIndex::BPlusTreeIndex(BufferPoolManager* bpm, const std::string& table_
         key_type_ = DataType::Int; // 默认类型
     }
     
-    logger_->Info("BPlusTreeIndex created with key_type={}", 
-        (key_type_ == DataType::Int ? "INT" : 
-         key_type_ == DataType::Varchar ? "STRING" : "BOOL"));
+    if (logger_) {
+        logger_->Info("BPlusTreeIndex created with key_type={}", 
+            (key_type_ == DataType::Int ? "INT" : 
+             key_type_ == DataType::Varchar ? "STRING" : "BOOL"));
+    }
 }
 
 BPlusTreeIndex::~BPlusTreeIndex() {

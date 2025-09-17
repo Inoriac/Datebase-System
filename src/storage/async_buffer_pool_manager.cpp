@@ -84,21 +84,64 @@ std::future<bool> AsyncBufferPoolManager::UnpinPagesAsync(const std::vector<int>
 
 // 预取操作
 void AsyncBufferPoolManager::PrefetchPage(int page_id) {
-    // 异步预取，不等待结果
-    FetchPageAsync(page_id);
+    // 检查页面是否已经在缓存中
+    if (page_table_.count(page_id) > 0) {
+        // 页面已在缓存中，更新统计
+        std::lock_guard<std::mutex> lock(prefetch_stats_mutex_);
+        prefetch_stats_.total_prefetch_requests++;
+        prefetch_stats_.cache_hits_from_prefetch++;
+        return;
+    }
     
-    // 更新统计信息
-    std::lock_guard<std::mutex> lock(prefetch_stats_mutex_);
-    prefetch_stats_.total_prefetch_requests++;
+    // 异步预取，不等待结果
+    auto future = FetchPageAsync(page_id);
+    
+    // 在后台更新统计信息
+    std::async(std::launch::async, [this, page_id, future = std::move(future)]() mutable {
+        Page* page = future.get();
+        std::lock_guard<std::mutex> lock(prefetch_stats_mutex_);
+        prefetch_stats_.total_prefetch_requests++;
+        if (page != nullptr) {
+            prefetch_stats_.successful_prefetches++;
+        }
+    });
 }
 
 void AsyncBufferPoolManager::PrefetchPages(const std::vector<int>& page_ids) {
-    // 异步预取多个页面
-    FetchPagesAsync(page_ids);
+    std::vector<int> pages_to_prefetch;
+    int cache_hits = 0;
     
-    // 更新统计信息
-    std::lock_guard<std::mutex> lock(prefetch_stats_mutex_);
-    prefetch_stats_.total_prefetch_requests += page_ids.size();
+    // 检查哪些页面需要预取
+    for (int page_id : page_ids) {
+        if (page_table_.count(page_id) > 0) {
+            cache_hits++;
+        } else {
+            pages_to_prefetch.push_back(page_id);
+        }
+    }
+    
+    // 更新缓存命中统计
+    {
+        std::lock_guard<std::mutex> lock(prefetch_stats_mutex_);
+        prefetch_stats_.total_prefetch_requests += page_ids.size();
+        prefetch_stats_.cache_hits_from_prefetch += cache_hits;
+    }
+    
+    if (!pages_to_prefetch.empty()) {
+        // 异步预取需要的页面
+        auto future = FetchPagesAsync(pages_to_prefetch);
+        
+        // 在后台更新统计信息
+        std::async(std::launch::async, [this, future = std::move(future)]() mutable {
+            std::vector<Page*> pages = future.get();
+            std::lock_guard<std::mutex> lock(prefetch_stats_mutex_);
+            for (Page* page : pages) {
+                if (page != nullptr) {
+                    prefetch_stats_.successful_prefetches++;
+                }
+            }
+        });
+    }
 }
 
 // 智能预读功能实现
