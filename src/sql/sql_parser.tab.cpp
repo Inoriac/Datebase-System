@@ -1627,7 +1627,6 @@ yyreduce:
         // 当整个程序解析完成，$1是sql_statements返回的根节点
         // 将它赋值给全局变量 ast_root
         ast_root = (yyvsp[0].node);
-        std::cout << "[Parser] SQL parsing complete. AST root is set." << std::endl;
     }
 #line 1633 "/home/cao/Desktop/Database-Sys/Datebase-System/src/sql/sql_parser.tab.cpp"
     break;

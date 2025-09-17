@@ -9,18 +9,7 @@
 
 // 从 AST 生成条件字符串
 static std::string build_condition_from_where(ASTNode* where) {
-    auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
-    logger->Info("build_condition_from_where: where={}, children.size()={}", 
-                where ? static_cast<int>(where->type) : -1, 
-                where ? where->children.size() : 0);
-    
-    if (!where) {
-        logger->Info("build_condition_from_where: where is null, returning empty string");
-        return "";
-    }
-    
-    if (where->children.empty()) {
-        logger->Info("build_condition_from_where: where has no children, returning empty string");
+    if (!where || where->children.empty()) {
         return "";
     }
 
@@ -85,7 +74,6 @@ static std::string build_condition_from_where(ASTNode* where) {
                 op = std::get<std::string>(expr->value);
             break;
         default:
-            logger->Info("build_condition_from_where: Unsupported operator type {}", static_cast<int>(expr->type));
             return "";
     }
 
@@ -109,23 +97,10 @@ static std::string build_condition_from_where(ASTNode* where) {
     }
 
     if (lhs.empty() || op.empty() || rhs.empty()) {
-        logger->Info("build_condition_from_where: lhs='{}', op='{}', rhs='{}' - returning empty", lhs, op, rhs);
         return "";
     }
 
-    std::string result = lhs + op + rhs;
-    logger->Info("build_condition_from_where: final result='{}'", result);
-    
-    // 添加更详细的调试信息
-    logger->Info("build_condition_from_where: expr->type={}, children.size()={}", 
-                static_cast<int>(expr->type), expr->children.size());
-    if (expr->children.size() >= 2) {
-        logger->Info("build_condition_from_where: left child type={}, right child type={}", 
-                    static_cast<int>(expr->children[0]->type), 
-                    static_cast<int>(expr->children[1]->type));
-    }
-    
-    return result;
+    return lhs + op + rhs;
 }
 
 // 全局的内存数据存储
@@ -294,13 +269,10 @@ std::unique_ptr<Tuple> SeqScanOperator::next()
 
     // 使用TableManager读取数据
     if (table_manager_) {
-        logger->Info("SeqScanOperator: Using TableManager for table '{}'", table_name);
-        logger->Info("SeqScanOperator: Checking if table '{}' exists", table_name);
         if (!table_manager_->TableExists(table_name)) {
             logger->Error("Table '{}' does not exist in TableManager", table_name);
             return nullptr;
         }
-        logger->Info("SeqScanOperator: Table '{}' exists, proceeding with scan", table_name);
         
         // 从TableManager获取所有记录
         if (all_records_.empty()) {
@@ -332,20 +304,6 @@ std::unique_ptr<Tuple> SeqScanOperator::next()
         // 返回当前行数据的副本
         auto result_tuple = std::make_unique<Tuple>(all_records_[current_row_index]);
         
-        logger->Info("Scanning tuple at index {} from TableManager:", current_row_index);
-        for (const auto &val : *result_tuple) {
-            // 使用运行时类型检查而不是std::visit
-            if (std::holds_alternative<int>(val)) {
-                std::cout << "int:" << std::get<int>(val) << " ";
-            } else if (std::holds_alternative<std::string>(val)) {
-                std::cout << "string:" << std::get<std::string>(val) << " ";
-            } else if (std::holds_alternative<bool>(val)) {
-                std::cout << "bool:" << std::get<bool>(val) << " ";
-            } else {
-                std::cout << "unknown:";
-            }
-        }
-        std::cout << std::endl;
         
         current_row_index++;
         return result_tuple;
@@ -390,19 +348,6 @@ std::unique_ptr<Tuple> FilterOperator::next()
         // 构建条件字符串
         std::string condition_str = build_condition_from_where(condition);
         auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
-        logger->Info("FilterOperator: table_name='{}', condition_str='{}'", table_name, condition_str);
-        
-        // 添加更详细的调试信息
-        if (condition) {
-            logger->Info("FilterOperator: condition node type={}, children.size()={}", 
-                        static_cast<int>(condition->type), condition->children.size());
-            if (!condition->children.empty()) {
-                logger->Info("FilterOperator: first child type={}", 
-                            static_cast<int>(condition->children[0]->type));
-            }
-        } else {
-            logger->Info("FilterOperator: condition is null");
-        }
         
 
         // 获取要选择的列名
@@ -425,11 +370,8 @@ std::unique_ptr<Tuple> FilterOperator::next()
         std::vector<Record> records;
         if (condition_str.empty()) {
             records = table_manager_->SelectColumns(table_name, select_columns);
-            logger->Info("FilterOperator: SelectColumns returned {} records", records.size());
         } else {
             records = table_manager_->SelectColumnsWithCondition(table_name, select_columns, condition_str);
-            logger->Info("FilterOperator: SelectColumnsWithCondition returned {} records with condition '{}'", 
-                        records.size(), condition_str);
         }
 
         // 将Record转换为Tuple

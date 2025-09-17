@@ -128,13 +128,10 @@ static bool CompareValues(const Value& lhs, DataType type, CmpOp op,
     switch (type) {
         case DataType::Int: {
             if (!std::holds_alternative<int>(lhs)) {
-                std::cout << "CompareValues: lhs is not int, type=" << lhs.index() << std::endl;
                 return false;
             }
             int lv = std::get<int>(lhs);
             int rv = int_value;
-            std::cout << "CompareValues: comparing int " << lv << " with " << rv << ", op=" << static_cast<int>(op) << std::endl;
-            std::cout << "CompareValues: int_value=" << int_value << ", is_string=" << is_string << ", is_bool=" << is_bool << std::endl;
             switch (op) {
                 case CmpOp::EQ: return lv == rv;
                 case CmpOp::NE: return lv != rv;
@@ -270,8 +267,9 @@ bool TableManager::CreateTable(const TableSchema &schema) {
         return false;
     }
 
-    // 为主键自动创建索引
-    if (schema.primary_key_index_ >= 0 && schema.primary_key_index_ < static_cast<int>(schema.columns_.size())) {
+    // 为主键自动创建索引（系统目录表除外，避免初始化时的循环依赖）
+    if (schema.table_name_ != TableSchemaManager::SystemCatalogTableName() &&
+        schema.primary_key_index_ >= 0 && schema.primary_key_index_ < static_cast<int>(schema.columns_.size())) {
         const std::string& pk_column_name = schema.columns_[schema.primary_key_index_].column_name_;
         if (index_manager_->CreateIndex(schema.table_name_, pk_column_name)) {
             std::cout << "TableManager: 为主键列 " << pk_column_name << " 创建索引成功" << std::endl;
@@ -871,7 +869,6 @@ int TableManager::GetPageCount(const std::string &table_name) {
 // ========= 统计/调试 ===========
 void TableManager::PrintTableInfo(const std::string &table_name) {
     if (!table_schemas_.count(table_name)) {
-        std::cout << "[TableManager] table not found: " << table_name << std::endl;
         return;
     }
 

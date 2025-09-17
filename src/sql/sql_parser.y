@@ -96,7 +96,6 @@ program:
         // 当整个程序解析完成，$1是sql_statements返回的根节点
         // 将它赋值给全局变量 ast_root
         ast_root = $1;
-        std::cout << "[Parser] SQL parsing complete. AST root is set." << std::endl;
     }
     ;
 
