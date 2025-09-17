@@ -467,7 +467,7 @@ literal:
         $$ = new ASTNode(STRING_LITERAL_NODE, $1, @1);
         free($1);
     }
-    ;
+    ;   
 
 %%
 /* C++ 代码部分 */

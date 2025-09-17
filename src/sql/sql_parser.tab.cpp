@@ -2041,7 +2041,7 @@ yyreduce:
         // 子节点1: 表名
         (yyval.node)->addChild(new ASTNode(IDENTIFIER_NODE, (yyvsp[-6].str_val), (yylsp[-6])));
         // 子节点2: 可选的列列表 (可能为nullptr)
-        (yyval.node)->addChild((yyvsp[-5].node));
+        if ((yyvsp[-5].node)) (yyval.node)->addChild((yyvsp[-5].node));
         // 子节点3: 值列表
         (yyval.node)->addChild((yyvsp[-1].node));   
         free((yyvsp[-6].str_val));
@@ -2514,6 +2514,8 @@ ASTNode* parse_sql_string(const std::string& sql) {
         return "VALUES_LIST";
     case SELECT_LIST:
         return "SELECT_LIST";
+    case COLUMN_LIST:
+        return "COLUMN_LIST";
     case WHERE_CLAUSE:
         return "WHERE_CLAUSE";
     case EQUAL_OPERATOR:
