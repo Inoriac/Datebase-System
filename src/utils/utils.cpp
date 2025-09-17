@@ -25,7 +25,7 @@ std::string nodeTypeToString(ASTNodeType type)
     case INTEGER_LITERAL_NODE:
         return "INTEGER_LITERAL_NODE";
     case STRING_LITERAL_NODE:
-        return "STRING_LITERAL_NODE";
+        return "VARCHAR_NODE";
     case COLUMN_DEFINITIONS_LIST:
         return "COLUMN_DEFINITIONS_LIST";
     case COLUMN_LIST:

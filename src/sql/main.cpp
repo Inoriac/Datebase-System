@@ -122,77 +122,60 @@ int main()
     //     std::cerr << "语义分析失败: " << e.what() << std::endl;
     // }
     // return 0;
-
-    // PlanGenerator plan_gen;
-
-    // try
-    // {
-
-    //     ASTNode *root_ast1 = new ASTNode(ROOT_NODE, "");
-    //     // ASTNode *createAst = createMockCreateTableAst();
-    //     // root_ast1->addChild(createAst);
-
-    //     ASTNode *insertAst = createMockInsertAst();
-    //     root_ast1->addChild(insertAst);
-    //     // ASTNode *insertAst = createMockInsertAst();
-    //     // root_ast1->addChild(insertAst);
-
-    //     // 1. 生成执行计划
-    //     std::unique_ptr<Operator> plan_root = plan_gen.generatePlan(root_ast1);
-    //     std::cout << "--- 正在生成执行计划 ---\n";
-
-    //     // 2. 打印树形格式
-    //     std::cout << "--- 树形格式 ---\n";
-    //     PlanGenerator::printPlanTree(plan_root.get());
-
-    //     // 3. 打印JSON格式
-    //     std::cout << "\n--- JSON 格式 ---\n";
-    //     std::cout << PlanGenerator::planToJSON(plan_root.get()) << "\n";
-
-    //     // 4. 执行计划
-    //     std::cout << "\n--- 正在执行计划 ---\n";
-    //     Executor executor(std::move(plan_root));
-    //     std::vector<Tuple> results = executor.execute();
-
-    //     // 打印结果
-    //     std::cout << "执行成功。结果行数：" << results.size() << "\n";
-    //     delete root_ast1;
-    // }
-    // catch (const SemanticError &e)
-    // {
-    //     std::cerr << "计划生成失败: " << e.what() << "\n";
-    // }
-    // // catch (const std::exception &e)
-    // // {
-    // //     std::cerr << "发生意外错误: " << e.what() << "\n";
-    // // }
-
-    // return 0;
     try
     {
         auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
 
         // 批量执行模拟语句
         std::vector<ASTNode *> mock_statements;
-        mock_statements.push_back(createMockCreateTableAst());
-        mock_statements.push_back(createMockCreateTableAst_order());
 
-        mock_statements.push_back(createMockInsertWithColumnsAst_order());
-        mock_statements.push_back(createMockInsertAst());            // 插入 (101, "Alice", 19)
-        mock_statements.push_back(createMockInsertWithColumnsAst()); // 插入 (102, "Alice", 25)
-        mock_statements.push_back(createMockInsertAst_order());      // 插入 (10001, 101)
 
-        // 3. 检查数据 - 在 UPDATE 前执行
-        mock_statements.push_back(createMockSelectAllUsersAst());
-        mock_statements.push_back(createMockSelectAllOrdersAst());
+        // mock_statements.push_back(createMockCreateTableAst());
+        // mock_statements.push_back(createMockCreateTableAst_order());
 
-        mock_statements.push_back(createMockSelectAst());
-        mock_statements.push_back(createMockFullSelectAst());
+        // mock_statements.push_back(createMockInsertWithColumnsAst_order());
+        // mock_statements.push_back(createMockInsertAst());            // 插入 (101, "Alice", 19)
+        // mock_statements.push_back(createMockInsertWithColumnsAst()); // 插入 (102, "Alice", 25)
+        // mock_statements.push_back(createMockInsertAst_order());      // 插入 (10001, 101)
 
-        mock_statements.push_back(createMockUpdateAst());
-        mock_statements.push_back(createMockSelectAllUsersAst());
+        // // 3. 检查数据 - 在 UPDATE 前执行
+        // mock_statements.push_back(createMockSelectAllUsersAst());
+        // mock_statements.push_back(createMockSelectAllOrdersAst());
 
-        mock_statements.push_back(createMockDeleteAst());
+        // mock_statements.push_back(createMockSelectAst());
+        // mock_statements.push_back(createMockFullSelectAst());
+
+        // mock_statements.push_back(createMockUpdateAst());
+        // mock_statements.push_back(createMockSelectAllUsersAst());
+
+        // mock_statements.push_back(createMockDeleteAst());
+
+
+        FILE *inputFile = fopen("/home/molidis/Desktop/bianyi/Datebase-System/src/sql/test.sql", "r");
+        if (!inputFile)
+        {
+            std::cerr << "无法打开输入文件 test.sql" << std::endl;
+            return 1;
+        }
+        yyin = inputFile;
+        if (yyparse() != 0)
+        {
+            std::cerr << "解析错误，无法生成 AST。" << std::endl;
+            fclose(inputFile);
+            return 1;
+        }
+        fclose(inputFile);
+        std::cout << "--- 解析成功，生成 AST。 ---\n";
+        printAST(ast_root, 0);
+
+        //转化函数
+        if (ast_root && ast_root->type == ROOT_NODE)
+        {
+            // 将 ast_root 的子节点所有权转移到 mock_statements
+            // C++11 之后的 std::vector 支持移动语义
+            mock_statements = std::move(ast_root->children);
+        }
+
 
 
         for (ASTNode *current_statement_node : mock_statements)
@@ -207,28 +190,27 @@ int main()
             temp_root->addChild(current_statement_node);
 
             // 1. 语义分析
-            logger->Info("--- Starting Semantic Analysis ---");
-            // SemanticAnalyzer analyzer(catalog);
-            // analyzer.analyze(temp_root);
-            logger->Info("Semantic analysis successful.");
+            logger->Info("--- 开始语义分析 ---");
+            semantic_analysis(temp_root);
+            logger->Info("语义分析成功。");
 
             // 2. 生成执行计划
-            logger->Info("--- Generating Execution Plan ---");
+            logger->Info("	--- 正在生成执行计划 ---");
             PlanGenerator plan_gen;
             std::unique_ptr<Operator> plan_root = plan_gen.generatePlan(temp_root);
             plan_gen.printPlanTree(plan_root.get(), 0);
-            logger->Info("Execution plan generated successfully.");
+            logger->Info("执行计划生成成功。");
 
             // 3. 执行计划
-            logger->Info("--- Executing Plan ---");
+            logger->Info("--- 正在执行计划 ---");
             Executor executor(std::move(plan_root));
             std::vector<Tuple> results = executor.execute();
-            logger->Info("Plan execution successful.");
+            logger->Info("	计划执行成功。");
 
             // 4. 打印结果（仅针对 SELECT 语句）
             if (current_statement_node->type == SELECT_STMT)
             {
-                logger->Info("--- Query Results ---");
+                logger->Info("	--- 查询结果 ---");
                 for (const auto &tuple : results)
                 {
                     for (const auto &val : tuple)
@@ -241,7 +223,7 @@ int main()
             }
 
             // 清理内存
-            delete (temp_root); // 只需释放临时的 ROOT_NODE 即可，其子节点会一同被释放
+            delete (temp_root);
         }
     }
     catch (const std::exception &e)
@@ -279,7 +261,7 @@ ASTNode *createMockCreateTableAst()
     ASTNode *name_col = new ASTNode(IDENTIFIER_NODE, "name");
     col_definitions->addChild(name_col);
     // name 列的类型节点：类型是子节点
-    ASTNode *name_type = new ASTNode(DATA_TYPE_NODE, "STRING");
+    ASTNode *name_type = new ASTNode(DATA_TYPE_NODE, "VARCHAR");
     name_col->addChild(name_type);
 
     // age 列节点：列名是父节点
@@ -577,9 +559,9 @@ ASTNode *createMockDeleteAst()
     delete_stmt->addChild(where_node);
 
     // 条件: id = 101
-    ASTNode *gt_op = new ASTNode(GREATER_THAN_OR_EQUAL_OPERATOR, "");
+    ASTNode *gt_op = new ASTNode(EQUAL_OPERATOR, "");
     gt_op->addChild(new ASTNode(IDENTIFIER_NODE, std::string("id")));
-    gt_op->addChild(new ASTNode(INTEGER_LITERAL_NODE, 100));
+    gt_op->addChild(new ASTNode(INTEGER_LITERAL_NODE, 101));
     where_node->addChild(gt_op);
 
     return delete_stmt;

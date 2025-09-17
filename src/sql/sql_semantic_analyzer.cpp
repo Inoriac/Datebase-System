@@ -21,7 +21,7 @@ bool typesMatch(const ASTNode *value_node, const std::string &column_type)
     {
         return true;
     }
-    if (value_node->type == STRING_LITERAL_NODE && column_type == "STRING")
+    if (value_node->type == STRING_LITERAL_NODE && column_type == "VARCHAR")
     {
         return true;
     }
@@ -239,13 +239,6 @@ void check_insert_statement(ASTNode *statement_node)
                 ASTNode *col_name_node = column_list_node->children[i];
                 const ASTNode *value_node = values_list_node->children[i];
 
-                // if (col_name_node->type != IDENTIFIER_NODE)
-                // {
-                //     throw SemanticError(SemanticError::SYNTAX_ERROR, "Invalid column name in column list.", col_name_node);
-                // }
-
-                // 使用 check_column_exists 来检查列是否存在
-                // 这会处理列不存在的错误，并提供智能纠错提示
                 check_column_exists(col_name_node, temp_tables);
             }
 
@@ -386,6 +379,10 @@ void check_select_statement(ASTNode *statement_node)
 
     for (ASTNode *col_node : select_list_node->children)
     {
+        if (col_node->type == IDENTIFIER_NODE && std::get<std::string>(col_node->value) == "*")
+        {
+            continue;
+        }
         check_column_exists(col_node, available_tables);
     }
 

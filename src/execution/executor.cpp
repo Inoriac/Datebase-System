@@ -4,6 +4,8 @@
 #include "utils.h" // 用于求值
 #include <iostream>
 #include <stdexcept>
+#include <variant>
+
 
 // 全局的内存数据存储
 std::unordered_map<std::string, std::vector<Tuple>> in_memory_data;
@@ -24,7 +26,7 @@ std::unique_ptr<Tuple> CreateTableOperator::next()
     // 为新表创建内存数据存储
     in_memory_data[table_name] = {};
     auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
-    logger->Info("Table '{}' created successfully", table_name);
+    logger->Info("表 '{}' 创建成功", table_name);
     return nullptr; // 没有数据行返回
 }
 
@@ -66,13 +68,13 @@ std::unique_ptr<Tuple> InsertOperator::next()
     auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
 
     // 打印即将插入的元组内容以进行调试
-    logger->Info("打印这个表看看", table_name);
-    for (const auto &val : final_tuple)
-    {
-        std::visit([&](const auto &arg)
-                   { std::cout << typeid(arg).name() << ":" << arg << " "; }, val);
-    }
-    std::cout << std::endl;
+    // logger->Info("打印这个表看看", table_name);
+    // for (const auto &val : final_tuple)
+    // {
+    //     std::visit([&](const auto &arg)
+    //                { std::cout << typeid(arg).name() << ":" << arg << " "; }, val);
+    // }
+    // std::cout << std::endl;
     // ... (日志和返回代码)
     return nullptr;
 }
@@ -90,13 +92,13 @@ std::unique_ptr<Tuple> SeqScanOperator::next()
     // 返回当前行数据的副本，并移动到下一行
     auto result_tuple = std::make_unique<Tuple>(in_memory_data[table_name][current_row_index]);
 
-    logger->Info("Scanning tuple at index %zu:", current_row_index);
-    for (const auto &val : *result_tuple)
-    {
-        std::visit([&](const auto &arg)
-                   { std::cout << typeid(arg).name() << ":" << arg << " "; }, val);
-    }
-    std::cout << std::endl;
+    // logger->Info("正在扫描索引为 %zu 的元组：", current_row_index);
+    // for (const auto &val : *result_tuple)
+    // {
+    //     std::visit([&](const auto &arg)  
+    //                { std::cout << typeid(arg).name() << ":" << arg << " "; }, val);
+    // }
+    // std::cout << std::endl;
     
     current_row_index++;
     logger->Info("select语句结束!");
@@ -172,7 +174,7 @@ std::unique_ptr<Tuple> UpdateOperator::next()
     if (tuples_to_update.empty())
     {
         auto logger = DatabaseSystem::Log::LogConfig::GetExecutionLogger();
-        logger->Info("No rows matched for update in table '{}'", table_name);
+        logger->Info("在表 '{}' 中没有与更新匹配的行", table_name);
         return nullptr;
     }
 
@@ -237,7 +239,34 @@ std::unique_ptr<Tuple> UpdateOperator::next()
         for (const auto &tuple_to_update : tuples_to_update)
         {
             // 通过 'id' 找到需要更新的元组
-            if (std::get<int>(stored_tuple[id_col_index]) == std::get<int>(tuple_to_update[id_col_index]))
+            // if (std::get<int>(stored_tuple[id_col_index]) == std::get<int>(tuple_to_update[id_col_index]))
+            // {
+            //     // 更新元组中的值
+            //     for (size_t i = 0; i < update_indices.size(); ++i)
+            //     {
+            //         stored_tuple[update_indices[i]] = update_values[i];
+            //     }
+            //     updated_count++;
+            //     break;
+            // }
+
+            LiteralValue &stored_id_value = stored_tuple[id_col_index];
+            const LiteralValue &update_id_value = tuple_to_update[id_col_index];
+
+            bool ids_match = std::visit(
+                [](const auto &val1, const auto &val2) -> bool
+                {
+                    if constexpr (std::is_same_v<decltype(val1), decltype(val2)>)
+                    {
+                        return val1 == val2;
+                    }
+                    return false;
+                },
+                stored_id_value,
+                update_id_value
+            );
+            // 如果 ID 匹配，则执行更新
+            if (ids_match)
             {
                 // 更新元组中的值
                 for (size_t i = 0; i < update_indices.size(); ++i)
@@ -245,8 +274,10 @@ std::unique_ptr<Tuple> UpdateOperator::next()
                     stored_tuple[update_indices[i]] = update_values[i];
                 }
                 updated_count++;
-                break;
+                // 更新后跳出循环
+                // return 0;
             }
+
         }
     }
     logger->Info("{} rows updated in table '{}'", updated_count, table_name);
@@ -290,7 +321,7 @@ std::vector<Tuple> Executor::execute()
         }
         break;
     default:
-        logger->Error("Unsupported operator type.");
+        logger->Error("不支持的算子类型。");
         break;
     }
 
