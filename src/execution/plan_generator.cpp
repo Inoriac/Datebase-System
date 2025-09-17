@@ -180,6 +180,9 @@ std::unique_ptr<Operator> PlanGenerator::visit(ASTNode *node)
     return nullptr;
 }
 
+
+
+
 void PlanGenerator::printPlanTree(const Operator *op, int indent)
 {
     if (!op)
@@ -301,4 +304,64 @@ std::string PlanGenerator::planToJSON(const Operator *op)
     }
     json += "}";
     return json;
+}
+
+
+std::string PlanGenerator::planToSExpression(const Operator *op)
+{
+    if (!op)
+    {
+        return "()";
+    }
+
+    std::stringstream ss;
+    ss << "(";
+
+    switch (op->type)
+    {
+    case CREATE_TABLE_OP:
+    {
+        const auto *create_op = static_cast<const CreateTableOperator *>(op);
+        ss << "CREATE_TABLE " << create_op->table_name;
+        break;
+    }
+    case INSERT_OP:
+    {
+        const auto *insert_op = static_cast<const InsertOperator *>(op);
+        ss << "INSERT " << insert_op->table_name;
+        break;
+    }
+    case PROJECT_OP:
+    {
+        const auto *proj_op = static_cast<const ProjectOperator *>(op);
+        ss << "PROJECT (";
+        for (size_t i = 0; i < proj_op->columns.size(); ++i)
+        {
+            ss << proj_op->columns[i] << (i == proj_op->columns.size() - 1 ? "" : " ");
+        }
+        ss << ") " << planToSExpression(proj_op->child.get());
+        break;
+    }
+    case FILTER_OP:
+    {
+        ss << "FILTER (...) " << planToSExpression(op->child.get());
+        break;
+    }
+    case SEQ_SCAN_OP:
+    {
+        const auto *scan_op = static_cast<const SeqScanOperator *>(op);
+        ss << "SEQ_SCAN " << scan_op->table_name;
+        break;
+    }
+    case UPDATE_OP:
+    {
+        const auto *update_op = static_cast<const UpdateOperator *>(op);
+        ss << "UPDATE " << update_op->table_name << " " << planToSExpression(update_op->child.get());
+        break;
+    }
+    default:
+        ss << "UNSUPPORTED_OP";
+    }
+    ss << ")";
+    return ss.str();
 }

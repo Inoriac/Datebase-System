@@ -201,6 +201,22 @@ int main()
             plan_gen.printPlanTree(plan_root.get(), 0);
             logger->Info("执行计划生成成功。");
 
+            // 打印树形结构
+            logger->Info("--- 查询计划树形结构 ---");
+            plan_gen.printPlanTree(plan_root.get(), 0);
+            logger->Info("-------------------------");
+            // 打印 JSON 格式
+            std::string json_plan = plan_gen.planToJSON(plan_root.get());
+            logger->Info("--- 查询计划JSON ---");
+            std::cout << json_plan << std::endl;
+            logger->Info("----------------------");
+            // 打印 S-表达式
+            std::string s_expression = plan_gen.planToSExpression(plan_root.get());
+            logger->Info("--- 查询计划S-表达式 ---");
+            std::cout << s_expression << std::endl;
+            logger->Info("-------------------------");
+
+
             // 3. 执行计划
             logger->Info("--- 正在执行计划 ---");
             Executor executor(std::move(plan_root));

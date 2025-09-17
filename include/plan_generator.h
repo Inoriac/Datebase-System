@@ -21,6 +21,9 @@ public:
     // 以JSON格式输出执行计划
     static std::string planToJSON(const Operator* op);
 
+    static std::string planToSExpression(const Operator *op);
+
+
 private:
     // 递归辅助函数
     std::unique_ptr<Operator> visit(ASTNode* node);
